@@ -85,6 +85,9 @@ dependencies:
   # ─── Medien (Phase 4) ─────────────────────────────────────────────────────
   # crypto: SHA-256-Hash für Dublettenerkennung beim Medien-Import (Streaming).
   crypto: ^3.0.6
+  # image: reines Dart (isolate-tauglich) für Thumbnail-Generierung.
+  # 3.x, weil epubx (Phase 2) image ^3.0.8 voraussetzt.
+  image: ^3.3.0
 
   # ─── Hilfspakete ──────────────────────────────────────────────────────────
   intl: ^0.20.2
