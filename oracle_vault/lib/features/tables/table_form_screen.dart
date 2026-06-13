@@ -95,6 +95,7 @@ class _TableFormScreenState extends ConsumerState<TableFormScreen> {
                 rollMin: e.rollMin,
                 rollMax: e.rollMax,
                 subtableId: e.subtableId,
+                mediaId: e.mediaId,
               ))
           .toList();
       if (_entries.isEmpty) _entries = [EntryDraft.empty()];
@@ -155,6 +156,7 @@ class _TableFormScreenState extends ConsumerState<TableFormScreen> {
                 rollMin: Value(e.value.rollMin),
                 rollMax: Value(e.value.rollMax),
                 subtableId: Value(e.value.subtableId),
+                mediaId: Value(e.value.mediaId),
               ))
           .toList();
 

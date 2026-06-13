@@ -25,6 +25,7 @@ import '../../../services/llm/llm_service.dart';
 import '../../../services/llm/llm_tasks.dart';
 import '../library_providers.dart';
 import '../library_state.dart';
+import 'media_thumbnail.dart';
 
 const _kLangLabels = {
   'de': 'Deutsch',
@@ -435,6 +436,10 @@ class _PreviewEntry extends StatelessWidget {
               style: const TextStyle(fontSize: 12),
             ),
           ),
+          if (entry.mediaId != null) ...[
+            const SizedBox(width: 8),
+            MediaThumbnail(mediaId: entry.mediaId!, size: 28),
+          ],
           if (entry.confidenceLow)
             Icon(Icons.warning_amber_rounded,
                 size: 12, color: warnText),

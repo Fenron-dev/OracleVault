@@ -7,12 +7,18 @@
 // ABHÄNGIGKEITEN: flutter, uuid
 // PHASE: 1
 
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:gap/gap.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/di.dart';
 import '../../../core/theme.dart';
+import '../../library/widgets/media_thumbnail.dart';
 
 const _uuid = Uuid();
 
@@ -25,6 +31,7 @@ class EntryDraft {
   int? rollMin;
   int? rollMax;
   String? subtableId;
+  String? mediaId;
 
   EntryDraft({
     String? id,
@@ -34,6 +41,7 @@ class EntryDraft {
     this.rollMin,
     this.rollMax,
     this.subtableId,
+    this.mediaId,
   }) : id = id ?? _uuid.v4();
 
   factory EntryDraft.empty() => EntryDraft();
@@ -53,6 +61,7 @@ class EntryDraft {
         rollMin: rollMin ?? this.rollMin,
         rollMax: rollMax ?? this.rollMax,
         subtableId: subtableId,
+        mediaId: mediaId,
       );
 }
 
@@ -209,7 +218,7 @@ class _EntriesEditorState extends State<EntriesEditor> {
 
 // ── Einzelne Eintrags-Zeile ───────────────────────────────────────────────────
 
-class _EntryRow extends StatefulWidget {
+class _EntryRow extends ConsumerStatefulWidget {
   final EntryDraft entry;
   final int index;
   final bool isDice;
@@ -230,10 +239,10 @@ class _EntryRow extends StatefulWidget {
   });
 
   @override
-  State<_EntryRow> createState() => _EntryRowState();
+  ConsumerState<_EntryRow> createState() => _EntryRowState();
 }
 
-class _EntryRowState extends State<_EntryRow> {
+class _EntryRowState extends ConsumerState<_EntryRow> {
   late TextEditingController _contentCtrl;
   late TextEditingController _minCtrl;
   late TextEditingController _maxCtrl;
@@ -271,6 +280,32 @@ class _EntryRowState extends State<_EntryRow> {
       rollMin: int.tryParse(_minCtrl.text),
       rollMax: int.tryParse(_maxCtrl.text),
     ));
+  }
+
+  Future<void> _attachImage() async {
+    final svc = ref.read(mediaServiceProvider);
+    if (svc == null) return;
+    final result = await FilePicker.platform.pickFiles(type: FileType.image);
+    final path = result?.files.single.path;
+    if (path == null) return;
+    try {
+      final media = await svc.importFile(File(path));
+      widget.entry.mediaId = media.id;
+      if (mounted) setState(() {});
+      _emit();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Bild-Import fehlgeschlagen: $e')),
+        );
+      }
+    }
+  }
+
+  void _removeImage() {
+    widget.entry.mediaId = null;
+    setState(() {});
+    _emit();
   }
 
   @override
@@ -362,9 +397,30 @@ class _EntryRowState extends State<_EntryRow> {
               ),
             ),
 
+            // Angehängtes Bild (Thumbnail), immer sichtbar wenn gesetzt
+            if (widget.entry.mediaId != null) ...[
+              const Gap(AppTheme.sp4),
+              MediaThumbnail(mediaId: widget.entry.mediaId!, size: 26),
+            ],
+
             // Aktions-Buttons (nur bei Hover)
             if (_hovered) ...[
               const Gap(AppTheme.sp4),
+              InkWell(
+                onTap:
+                    widget.entry.mediaId == null ? _attachImage : _removeImage,
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Icon(
+                    widget.entry.mediaId == null
+                        ? Icons.image_outlined
+                        : Icons.hide_image_outlined,
+                    size: 14,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
+              ),
               InkWell(
                 onTap: widget.onAddAfter,
                 borderRadius: BorderRadius.circular(4),
