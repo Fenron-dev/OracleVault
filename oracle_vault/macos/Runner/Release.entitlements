@@ -2,13 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Sandbox auch im Release deaktiviert.
+	     GRUND: Der per CI gebaute Release-Build ist nur ad-hoc-signiert
+	     (kein Apple-Developer-Zertifikat, keine Notarisierung, kein App Store).
+	     Mit aktiver Sandbox + ad-hoc-Signierung gilt:
+	       • Vault-DB lässt sich nur lesend öffnen → SqliteException(14)
+	         (WAL-Modus braucht Schreibzugriff auf den Ordner).
+	       • Ein Vault aus der "Zuletzt geöffnet"-Liste lässt sich gar nicht
+	         erneut öffnen (Security-Scoped Bookmarks sind nicht implementiert).
+	       • Keychain-Zugriff scheitert mit errSecMissingEntitlement (-34018).
+	     Für eine echte App-Store-Distribution müssten Sandbox wieder aktiviert,
+	     user-selected.read-WRITE gesetzt und Security-Scoped Bookmarks
+	     implementiert werden. -->
 	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
-	<!-- Nutzer-gewählte Dateien via FilePicker lesen (Sandbox) -->
-	<key>com.apple.security.files.user-selected.read-only</key>
+	<key>com.apple.security.network.server</key>
 	<true/>
-	<!-- Temp-Verzeichnis für Clipboard-Bilder und PDF-OCR-Staging -->
-	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-	<string>/var/folders/</string>
 </dict>
 </plist>
