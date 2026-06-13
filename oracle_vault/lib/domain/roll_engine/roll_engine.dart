@@ -17,6 +17,7 @@
 // ABHÄNGIGKEITEN: dart:math, dice_parser.dart, vault_database.dart
 // PHASE: 0 – Pflichtmodul.
 
+import 'dart:convert';
 import 'dart:math';
 
 import 'dice_parser.dart';
@@ -208,7 +209,11 @@ class RollEngine {
       }
     }
 
-    return RollResult(entry: entry, path: path);
+    return RollResult(
+      entry: entry,
+      path: path,
+      modifiers: _resolveModifiers(entry),
+    );
   }
 
   /// Zieht [count] Mal auf [table].
@@ -232,14 +237,18 @@ class RollEngine {
     for (var i = 0; i < limited; i++) {
       final entry = _pickFromList(available, table.oracleType, table.diceExpr);
       available.remove(entry);
-      results.add(RollResult(entry: entry, path: [
-        RollStep(
-          tableId: table.id,
-          tableName: table.name,
-          entryId: entry.id,
-          entryContent: entry.content,
-        )
-      ]));
+      results.add(RollResult(
+        entry: entry,
+        modifiers: _resolveModifiers(entry),
+        path: [
+          RollStep(
+            tableId: table.id,
+            tableName: table.name,
+            entryId: entry.id,
+            entryContent: entry.content,
+          )
+        ],
+      ));
     }
     return results;
   }
@@ -266,6 +275,7 @@ class RollEngine {
     });
     return RollResult(
       entry: entry,
+      modifiers: _resolveModifiers(entry),
       path: [
         RollStep(
           tableId: table.id,
@@ -285,6 +295,30 @@ class RollEngine {
       remainingIds: state.remainingIds.sublist(1),
       drawnIds: [...state.drawnIds, drawn],
     );
+  }
+
+  // ── Modifier (Tarot reversed/upright u. a.) ─────────────────────────────────
+
+  /// Wertet [RollEntry.modifierJson] aus und erzeugt die Lauf­zeit-Modifier
+  /// eines Ziehvorgangs.
+  ///
+  /// Tarot: Ist `reversed_possible == true`, wird pro Ziehung zufällig
+  /// `{reversed: true|false}` (upright/reversed) bestimmt. Andere Modifier-
+  /// Felder werden unverändert durchgereicht.
+  Map<String, dynamic> _resolveModifiers(RollEntry entry) {
+    if (entry.modifierJson == null || entry.modifierJson!.isEmpty) {
+      return const {};
+    }
+    try {
+      final raw = jsonDecode(entry.modifierJson!) as Map<String, dynamic>;
+      final result = <String, dynamic>{};
+      if (raw['reversed_possible'] == true) {
+        result['reversed'] = _random.nextBool();
+      }
+      return result;
+    } catch (_) {
+      return const {};
+    }
   }
 
   // ── Interne Picker ─────────────────────────────────────────────────────────
