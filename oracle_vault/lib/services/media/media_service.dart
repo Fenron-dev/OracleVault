@@ -11,9 +11,11 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart' show Value;
+import 'package:image/image.dart' as img;
 import 'package:mime/mime.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -76,6 +78,13 @@ class MediaService {
     final relPath = p.join('media', subtype, fileName);
     final bytes = await source.length();
     final meta = <String, dynamic>{...?metadata, 'bytes': bytes};
+
+    // Bildmaße (Breite/Höhe) im Isolate ermitteln — blockiert die UI nicht.
+    if (type == 'image') {
+      final dim = await Isolate.run(() => _readImageSize(source.path));
+      if (dim != null) meta.addAll(dim);
+    }
+
     final id = _uuid.v4();
 
     await _dao.insertMedia(MediaFilesCompanion.insert(
@@ -154,6 +163,17 @@ class MediaService {
         'video' => 'video',
         _ => 'documents',
       };
+}
+
+/// Liest die Pixelmaße eines Bildes (Isolate-Entry). Null bei Fehlern.
+Map<String, dynamic>? _readImageSize(String path) {
+  try {
+    final decoded = img.decodeImage(File(path).readAsBytesSync());
+    if (decoded == null) return null;
+    return {'width': decoded.width, 'height': decoded.height};
+  } catch (_) {
+    return null;
+  }
 }
 
 class MediaImportException implements Exception {

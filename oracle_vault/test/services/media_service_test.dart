@@ -3,7 +3,10 @@
 
 import 'dart:io';
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:oracle_vault/data/db/vault_database.dart';
 import 'package:oracle_vault/services/media/media_service.dart';
 import 'package:path/path.dart' as p;
@@ -90,6 +93,20 @@ void main() {
     // Fallback nur über Endung
     expect(MediaService.mediaTypeFor(null, 'clip.mov'), 'video');
     expect(MediaService.mediaTypeFor(null, 'note.unknownext'), 'document');
+  });
+
+  test('Bild-Import speichert Breite/Höhe in metadataJson', () async {
+    final image = img.Image(640, 480);
+    img.fill(image, img.getColor(10, 20, 30));
+    final src = File(p.join(vaultDir.path, '_src', 'sized.png'));
+    await src.create(recursive: true);
+    await src.writeAsBytes(img.encodePng(image));
+
+    final media = await service.importFile(src);
+    final meta = jsonDecode(media.metadataJson!) as Map<String, dynamic>;
+    expect(meta['width'], 640);
+    expect(meta['height'], 480);
+    expect(meta['bytes'], isPositive);
   });
 
   test('importFile wirft bei fehlender Quelldatei', () async {
