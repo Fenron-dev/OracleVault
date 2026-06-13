@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>OracleVault — Wireframe: Tabellen-Detail</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.0.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --bg-primary: #FFFFFF; --bg-secondary: #F7F6F4; --border: #E4E1DB;
+    --text-primary: #1F1E1B; --text-secondary: #5C5A55; --text-tertiary: #8F8B83;
+    --accent-bg: #DDEEEA; --accent-text: #0F5A4A; --accent-border: #1F7A65;
+    --warning-bg: #FFF4DA; --warning-text: #8A5A0F; --warning-border: #D9B870;
+    --success-bg: #DDF2DC; --success-text: #1F6A2A;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1A1817; --bg-secondary: #232220; --border: #3A3835;
+      --text-primary: #F0EFED; --text-secondary: #B5B2AB; --text-tertiary: #807C74;
+      --accent-bg: #1A3E37; --accent-text: #6FB8A5; --accent-border: #2D6B5E;
+      --warning-bg: #3E3315; --warning-text: #D9B870; --warning-border: #6B5530;
+      --success-bg: #1E3F22; --success-text: #7AC481;
+    }
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    font-size: 13px; color: var(--text-primary); background: var(--bg-secondary);
+    margin: 0; padding: 24px; line-height: 1.4;
+  }
+  .frame {
+    max-width: 1080px; margin: 0 auto;
+    background: var(--bg-primary); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden;
+  }
+  .breadcrumb {
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .btn {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    padding: 4px 10px; font-size: 12px; cursor: pointer;
+    color: var(--text-primary); border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 5px;
+  }
+  .btn:hover { background: var(--bg-secondary); }
+  .crumb {
+    font-size: 12px; color: var(--text-tertiary);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .header {
+    padding: 16px 18px; border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    margin: 0 0 8px; font-size: 18px; font-weight: 500;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .meta-chips {
+    display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 11px;
+  }
+  .meta-chips .badge {
+    background: var(--bg-secondary); padding: 3px 8px; border-radius: 5px;
+  }
+  .meta-chips .tag {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    padding: 3px 8px; border-radius: 999px;
+  }
+  .main {
+    display: grid; grid-template-columns: 1fr 260px;
+    min-height: 480px;
+  }
+  .entries-area {
+    padding: 12px 16px; border-right: 1px solid var(--border);
+  }
+  .entries-header {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  }
+  .entries-header .lbl {
+    font-size: 11px; color: var(--text-tertiary);
+  }
+  .actions-mini {
+    margin-left: auto; display: flex; gap: 4px;
+  }
+  .btn.mini { padding: 3px 8px; font-size: 11px; }
+  .entries-list {
+    border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .entry {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+  }
+  .entry:last-child { border-bottom: none; }
+  .entry .num {
+    width: 24px; color: var(--text-tertiary); font-size: 11px; padding-top: 1px;
+  }
+  .entry .text { flex: 1; }
+  .entry.warn {
+    background: var(--warning-bg);
+    border-left: 3px solid var(--warning-border);
+    padding-left: 9px;
+  }
+  .entry.warn .num { color: var(--warning-text); }
+  .entry.subtable {
+    border-left: 3px solid var(--accent-border);
+    padding-left: 9px;
+  }
+  .wikilink {
+    color: var(--accent-text);
+    border-bottom: 1px solid var(--accent-border);
+    cursor: pointer;
+  }
+  .embed-thumb {
+    margin-top: 5px; display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px; background: var(--bg-secondary); border-radius: 4px;
+  }
+  .embed-thumb .ph {
+    width: 44px; height: 30px; border-radius: 3px;
+    background: linear-gradient(135deg, #B4D196, #6B8E50);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .embed-thumb .info {
+    font-size: 10px; color: var(--text-tertiary); line-height: 1.4;
+  }
+  .subtable-line {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .subtable-line .arrow { color: var(--accent-text); font-size: 13px; }
+  .subtable-line .stxt { color: var(--accent-text); }
+  .more-row {
+    background: var(--bg-secondary); color: var(--text-tertiary);
+    text-align: center; font-size: 11px;
+  }
+  .ai-actions {
+    display: flex; gap: 6px; margin-top: 12px;
+  }
+  .side {
+    padding: 14px 14px; background: var(--bg-secondary);
+  }
+  .side-section {
+    margin-bottom: 16px;
+  }
+  .side-label {
+    font-size: 10px; color: var(--text-tertiary); margin-bottom: 5px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .side-label .badge {
+    background: var(--accent-bg); color: var(--accent-text);
+    font-size: 10px; padding: 1px 6px; border-radius: 999px; margin-left: 4px;
+  }
+  .roll-card {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px; text-align: center;
+  }
+  .roll-card .die { font-size: 10px; color: var(--text-tertiary); }
+  .roll-card .num {
+    font-size: 26px; font-weight: 500; margin: 2px 0; color: var(--accent-text);
+  }
+  .roll-card .res {
+    font-size: 11px; margin-bottom: 8px; line-height: 1.3;
+  }
+  .roll-card button {
+    width: 100%; padding: 6px; font-size: 12px;
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 5px; cursor: pointer; color: var(--text-primary);
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .roll-card button:hover { background: var(--accent-bg); color: var(--accent-text); }
+  .history {
+    margin-top: 7px; font-size: 10px; color: var(--text-tertiary); text-align: center;
+  }
+  .link-list {
+    font-size: 12px; line-height: 1.8;
+  }
+  .link-list .item {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .link-list .i { font-size: 12px; color: var(--text-tertiary); }
+  .link-list .a { color: var(--accent-text); cursor: pointer; }
+  .link-list .a:hover { text-decoration: underline; }
+  .legend {
+    max-width: 1080px; margin: 16px auto 0; padding: 0 16px;
+    font-size: 11px; color: var(--text-tertiary);
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+  <div class="breadcrumb">
+    <button class="btn"><i class="ti ti-arrow-left" style="font-size: 13px;"></i> Library</button>
+    <div class="crumb">
+      Bestiarium <i class="ti ti-chevron-right" style="font-size: 10px;"></i> Items
+    </div>
+    <span style="margin-left: auto; font-size: 11px; color: var(--text-tertiary);">
+      Zuletzt bearbeitet: heute, 14:23
+    </span>
+    <button class="btn"><i class="ti ti-share" style="font-size: 13px;"></i></button>
+    <button class="btn"><i class="ti ti-dots-vertical" style="font-size: 13px;"></i></button>
+  </div>
+
+  <div class="header">
+    <h1>
+      <i class="ti ti-dice-5" style="font-size: 22px;"></i>
+      D100 — Seltsame Dinge in der Hosentasche
+    </h1>
+    <div class="meta-chips">
+      <span class="badge">d100 · 100 Einträge</span>
+      <span class="badge">DE</span>
+      <span class="badge">CC-BY 4.0</span>
+      <span style="color: var(--text-tertiary);">·</span>
+      <span class="tag">#fantasy</span>
+      <span class="tag">#items</span>
+      <span class="tag">#whimsical</span>
+      <span style="color: var(--text-tertiary); cursor: pointer;">+ Tag</span>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <main class="entries-area">
+      <div class="entries-header">
+        <span class="lbl">Einträge</span>
+        <span style="color: var(--text-tertiary); font-size: 11px;">·</span>
+        <span class="lbl">klick zum Bearbeiten</span>
+        <div class="actions-mini">
+          <button class="btn mini"><i class="ti ti-plus" style="font-size: 11px;"></i> Eintrag</button>
+          <button class="btn mini"><i class="ti ti-sparkles" style="font-size: 11px;"></i> KI erweitern</button>
+          <button class="btn mini"><i class="ti ti-arrows-sort" style="font-size: 11px;"></i></button>
+        </div>
+      </div>
+
+      <div class="entries-list">
+
+        <div class="entry">
+          <span class="num">01</span>
+          <span class="text">Ein alter Schlüssel, aber wofür?</span>
+        </div>
+
+        <div class="entry warn">
+          <span class="num">02</span>
+          <span class="text">Eine gefaltete Notiz in unbekannter Schrift</span>
+          <i class="ti ti-alert-triangle" style="font-size: 12px; color: var(--warning-text); margin-top: 3px;" title="Aus Import, ungeprüft"></i>
+        </div>
+
+        <div class="entry">
+          <span class="num">03</span>
+          <span class="text">
+            Eine Münze, geprägt mit dem Gesicht von <span class="wikilink">[[NSC: Taschendieb]]</span>
+          </span>
+        </div>
+
+        <div class="entry">
+          <span class="num">04</span>
+          <div class="text">
+            Ein gepresstes vierblättriges Kleeblatt
+            <div class="embed-thumb">
+              <div class="ph"><i class="ti ti-leaf" style="font-size: 14px; color: white;"></i></div>
+              <div class="info">kleeblatt.jpg<br>![[clover_pressed.jpg]]</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="entry subtable">
+          <span class="num">05</span>
+          <div class="text subtable-line">
+            <i class="ti ti-corner-down-right arrow"></i>
+            <span>Ein Schmuckstück</span>
+            <span style="font-size: 11px; color: var(--text-tertiary);">würfelt auf</span>
+            <span class="stxt wikilink" style="border-color: var(--accent-border);">Schmuckstücke (d20)</span>
+          </div>
+        </div>
+
+        <div class="entry">
+          <span class="num">06</span>
+          <span class="text">Drei glatte Flusskiesel, ungewöhnlich kalt</span>
+        </div>
+
+        <div class="entry">
+          <span class="num">07</span>
+          <span class="text">
+            Ein Knopf von einer <span class="wikilink">[[Stadtwache-Uniform]]</span>
+          </span>
+        </div>
+
+        <div class="entry more-row">93 weitere · alle anzeigen</div>
+
+      </div>
+
+      <div class="ai-actions">
+        <button class="btn mini"><i class="ti ti-sparkles" style="font-size: 12px;"></i> 10 weitere generieren</button>
+        <button class="btn mini"><i class="ti ti-language" style="font-size: 12px;"></i> Übersetzen</button>
+        <button class="btn mini"><i class="ti ti-wand" style="font-size: 12px;"></i> Stil vereinheitlichen</button>
+      </div>
+    </main>
+
+    <aside class="side">
+
+      <div class="side-section">
+        <div class="side-label">Test-Wurf</div>
+        <div class="roll-card">
+          <div class="die">d100</div>
+          <div class="num">47</div>
+          <div class="res">Eine Glaskugel mit gefrorenem Rauch</div>
+          <button><i class="ti ti-dice-5" style="font-size: 13px;"></i> Erneut</button>
+        </div>
+        <div class="history">Letzte: 47 · 12 · 88 · 03 · 71</div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-label">
+          <i class="ti ti-chevron-down" style="font-size: 11px;"></i> Verlinkt nach
+        </div>
+        <div class="link-list">
+          <div class="item"><i class="ti ti-link i"></i> <span class="a">NSC: Taschendieb</span></div>
+          <div class="item"><i class="ti ti-link i"></i> <span class="a">Stadtwache-Uniform</span></div>
+          <div class="item"><i class="ti ti-corner-down-right i" style="color: var(--accent-text);"></i> <span class="a">Schmuckstücke (d20)</span></div>
+          <div class="item"><i class="ti ti-photo i"></i> <span>clover_pressed.jpg</span></div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-label">
+          <i class="ti ti-chevron-down" style="font-size: 11px;"></i> Verlinkt von
+          <span class="badge">5</span>
+        </div>
+        <div class="link-list">
+          <div>D20 — NSC-Ausstattung</div>
+          <div>Stadt-Encounter-Tabelle</div>
+          <div>Szene: Marktplatz</div>
+          <div style="color: var(--text-tertiary);">+ 2 weitere</div>
+        </div>
+      </div>
+
+      <div class="side-section">
+        <div class="side-label">
+          <i class="ti ti-chevron-right" style="font-size: 11px;"></i> Quelle
+        </div>
+      </div>
+
+    </aside>
+
+  </div>
+
+</div>
+
+<div class="legend">
+  Wireframe „Tabellen-Detail" — Inline-Edit ohne Edit-Modus. Eintragstypen visuell unterschieden: Konfidenz-Warn (02, gelb), Wiki-Link (03, 07), eingebettetes Medium (04), Subtable-Verweis (05, blauer Border + Pfeil). Rechtes Panel mit Test-Wurf, „Verlinkt nach" und Backlink-Sektionen (alle kollabierbar).
+</div>
+
+</body>
+</html>

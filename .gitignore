@@ -1,0 +1,32 @@
+# Projekt-Konzept (privat, nicht öffentlich)
+Konzept/
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Claude Code local settings (machine-/user-specific)
+.claude/settings.local.json
+
+# IDE
+.idea/
+*.iml
+
+# Safety net for Flutter build artifacts / caches (also ignored per-package)
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/Pods/
+**/.symlinks/
+
+# Secrets — never commit
+*.env
+.env*
+*.pem
+*.key
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+secrets.json

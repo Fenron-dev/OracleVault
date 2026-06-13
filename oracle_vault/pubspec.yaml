@@ -1,0 +1,101 @@
+name: oracle_vault
+description: Lokal-first Flutter-App zur Verwaltung von Random-Tabellen, Orakeln und Sammlungen für Pen-&-Paper- und Solo-RPGs.
+publish_to: 'none'
+
+# Versionierung: Major.Minor.Patch+Build
+# Phase 0 = 0.1.x
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.1
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ─── Datenbank ────────────────────────────────────────────────────────────
+  # drift: Typsicherer SQLite-Wrapper mit FTS5 und reaktiven Streams.
+  # drift/native.dart wird direkt importiert, weil wir die DB aus einem
+  # nutzer-gewählten Vault-Ordner öffnen (kein fixer App-Dokumentenpfad).
+  drift: ^2.23.1
+  drift_flutter: ^0.2.4
+  sqlite3_flutter_libs: ^0.5.24
+
+  # ─── State Management ─────────────────────────────────────────────────────
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # ─── Routing ──────────────────────────────────────────────────────────────
+  # StatefulShellRoute für persistente Tab-Stacks (Tab-Wechsel verliert keinen Zustand).
+  go_router: ^14.8.1
+
+  # ─── Dateisystem & Pfade ──────────────────────────────────────────────────
+  path_provider: ^2.1.5
+  path: ^1.9.0
+
+  # ─── Vault-Auswahl ────────────────────────────────────────────────────────
+  # file_picker: Ordner-Auswahl für „Open Vault…" und „Create Vault…".
+  file_picker: ^8.3.7
+
+  # ─── App-weite Einstellungen (Recent-Vaults-Liste, Theme) ─────────────────
+  # Vault-Daten selbst liegen in index.db, nicht hier.
+  shared_preferences: ^2.3.5
+
+  # ─── UUID ─────────────────────────────────────────────────────────────────
+  uuid: ^4.5.1
+
+  # ─── Backup: ZIP-Archivierung ─────────────────────────────────────────────
+  archive: ^3.6.1
+
+  # ─── Import-Pipeline (Phase 2) ────────────────────────────────────────────
+  # http: URL-Fetch für URL/HTML-Adapter.
+  http: ^1.6.0
+  # html: HTML-Parsing (Tagging, Tabellen, Listen-Heuristiken).
+  html: ^0.15.5
+  # csv: RFC-4180-konformes CSV-Parsing.
+  csv: ^6.0.0
+  # excel: XLSX-Lesen ohne nativen Code (reines Dart).
+  excel: ^4.0.6
+  # mime: MIME-Type-Erkennung aus Dateiendung beim Datei-Import.
+  mime: ^2.0.0
+
+  # ─── PDF-Import (Phase 2) ─────────────────────────────────────────────────
+  # pdfrx: PDF-Textextraktion (pdfrx 1.x nutzt PDFKit auf Apple, pdfium sonst).
+  pdfrx: ^1.0.0
+
+  # ─── ePub-Import (Phase 2) ────────────────────────────────────────────────
+  epubx: ^4.0.0
+
+  # ─── OCR (Phase 4) ───────────────────────────────────────────────────────
+  # macOS + iOS : Apple Vision Framework (lokal, offline)
+  apple_vision_recognize_text: ^0.0.4
+  # Android     : Vision Text Recognition (Apple Vision auf iOS, MLKit auf Android)
+  vision_text_recognition: ^1.0.2
+  # Backup / iOS-Mobile-Pfad
+  google_mlkit_text_recognition: ^0.14.0
+
+  # ─── Zwischenablage-Bilder (macOS + iOS) ─────────────────────────────────
+  pasteboard: ^0.3.0
+
+  # ─── KI-Integration (Phase 3) ────────────────────────────────────────────
+  # Hinweis: flutter_secure_storage wurde entfernt — API-Keys in SharedPreferences,
+  # da Keychain auf ad-hoc-signierten macOS-Builds nicht funktioniert (-34018).
+
+  # ─── Hilfspakete ──────────────────────────────────────────────────────────
+  intl: ^0.20.2
+  gap: ^3.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+  # ─── Code-Generierung ─────────────────────────────────────────────────────
+  # Ausführen mit: dart run build_runner build --delete-conflicting-outputs
+  build_runner: ^2.4.15
+  drift_dev: ^2.23.1
+  riverpod_generator: ^2.6.5
+
+flutter:
+  uses-material-design: true

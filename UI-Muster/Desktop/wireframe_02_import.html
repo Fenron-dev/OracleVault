@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>OracleVault — Wireframe: Import</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.0.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --bg-primary: #FFFFFF; --bg-secondary: #F7F6F4; --border: #E4E1DB;
+    --text-primary: #1F1E1B; --text-secondary: #5C5A55; --text-tertiary: #8F8B83;
+    --accent-bg: #DDEEEA; --accent-text: #0F5A4A; --accent-border: #1F7A65;
+    --warning-bg: #FFF4DA; --warning-text: #8A5A0F; --warning-border: #D9B870;
+    --success-bg: #DDF2DC; --success-text: #1F6A2A;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1A1817; --bg-secondary: #232220; --border: #3A3835;
+      --text-primary: #F0EFED; --text-secondary: #B5B2AB; --text-tertiary: #807C74;
+      --accent-bg: #1A3E37; --accent-text: #6FB8A5; --accent-border: #2D6B5E;
+      --warning-bg: #3E3315; --warning-text: #D9B870; --warning-border: #6B5530;
+      --success-bg: #1E3F22; --success-text: #7AC481;
+    }
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    font-size: 13px; color: var(--text-primary); background: var(--bg-secondary);
+    margin: 0; padding: 24px; line-height: 1.4;
+  }
+  .frame {
+    max-width: 1080px; margin: 0 auto;
+    background: var(--bg-primary); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden;
+  }
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .btn {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    padding: 5px 12px; font-size: 12px; cursor: pointer; color: var(--text-primary);
+    display: inline-flex; align-items: center; gap: 5px; border-radius: 6px;
+  }
+  .btn:hover { background: var(--bg-secondary); }
+  .btn.primary {
+    background: var(--accent-bg); color: var(--accent-text);
+    border-color: var(--accent-border); font-weight: 500;
+  }
+  .btn.primary:hover { background: var(--accent-text); color: var(--bg-primary); }
+  kbd {
+    font-size: 10px; padding: 1px 5px; border-radius: 3px;
+    color: var(--text-tertiary); opacity: 0.8;
+  }
+  .status-pill {
+    background: var(--success-bg); color: var(--success-text);
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .url-row {
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .url-text {
+    flex: 1; font-size: 12px; color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .main {
+    display: grid; grid-template-columns: 340px 1fr;
+    min-height: 380px;
+  }
+  .source-pane {
+    border-right: 1px solid var(--border);
+    padding: 14px 16px;
+    background: var(--bg-secondary);
+    font-size: 12px;
+  }
+  .source-pane .label {
+    font-size: 10px; color: var(--text-tertiary); margin-bottom: 6px;
+  }
+  .source-card {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px; line-height: 1.6;
+  }
+  .source-card .ttl {
+    font-weight: 500; color: var(--text-primary); margin-bottom: 4px;
+  }
+  .source-card .ext-tag {
+    background: var(--accent-bg); color: var(--accent-text);
+    font-size: 10px; padding: 2px 6px; border-radius: 4px;
+    display: inline-block; margin-bottom: 6px;
+  }
+  .source-hint {
+    font-size: 11px; color: var(--text-tertiary); margin-top: 10px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .edit-pane { padding: 14px 16px; }
+  .form-row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .field { flex: 1; }
+  .field.small { width: 90px; flex: none; }
+  .field-label {
+    font-size: 10px; color: var(--text-tertiary); margin-bottom: 3px;
+  }
+  .field-value {
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--bg-primary); font-size: 13px;
+  }
+  .field-value.bold { font-weight: 500; }
+  .field-value.select { display: flex; align-items: center; }
+  .field-value .chev { margin-left: auto; font-size: 11px; color: var(--text-tertiary); }
+  .entries-label {
+    font-size: 10px; color: var(--text-tertiary); margin-bottom: 5px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .entries-list {
+    border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .entry {
+    padding: 7px 10px; font-size: 12px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .entry:last-child { border-bottom: none; }
+  .entry .num {
+    width: 24px; color: var(--text-tertiary); font-size: 11px;
+  }
+  .entry .text { flex: 1; }
+  .entry.warn {
+    background: var(--warning-bg);
+    border-left: 3px solid var(--warning-border);
+    padding-left: 7px;
+  }
+  .entry.warn .num { color: var(--warning-text); }
+  .entry.warn .badge {
+    color: var(--warning-text); font-size: 10px;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .entry.more {
+    background: var(--bg-secondary); color: var(--text-tertiary);
+    justify-content: center; font-size: 11px;
+  }
+  .ai-block {
+    padding: 12px 16px; border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .ai-label {
+    font-size: 10px; color: var(--text-tertiary); margin-bottom: 7px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip-suggest {
+    background: var(--accent-bg); color: var(--accent-text);
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+    border: 1px solid var(--accent-border);
+  }
+  .chip-accepted {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+  }
+  .source-block {
+    padding: 12px 16px; border-top: 1px solid var(--border);
+  }
+  .source-grid {
+    display: grid; grid-template-columns: auto 1fr auto 1fr;
+    gap: 6px 16px; font-size: 12px; align-items: center;
+  }
+  .source-grid .lbl { color: var(--text-tertiary); }
+  .license-warn {
+    background: var(--warning-bg); color: var(--warning-text);
+    padding: 2px 10px; border-radius: 5px; font-size: 12px;
+    display: inline-flex; align-items: center; gap: 5px; width: fit-content;
+    cursor: pointer;
+  }
+  .bottom {
+    padding: 11px 16px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .bottom label {
+    font-size: 12px; display: flex; align-items: center; gap: 5px;
+    cursor: pointer;
+  }
+  .legend {
+    max-width: 1080px; margin: 16px auto 0; padding: 0 16px;
+    font-size: 11px; color: var(--text-tertiary);
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+  <div class="topbar">
+    <button class="btn"><i class="ti ti-arrow-left" style="font-size: 13px;"></i> Zurück</button>
+    <i class="ti ti-file-import" style="font-size: 16px;"></i>
+    <strong style="font-weight: 500;">Importieren</strong>
+    <span style="font-size: 11px; color: var(--text-tertiary);">aus URL</span>
+    <span style="flex: 1;"></span>
+    <span class="status-pill"><i class="ti ti-check" style="font-size: 11px;"></i> Bereit</span>
+    <button class="btn">Verwerfen</button>
+    <button class="btn primary">
+      <i class="ti ti-device-floppy" style="font-size: 13px;"></i> Speichern <kbd>⌘⏎</kbd>
+    </button>
+  </div>
+
+  <div class="url-row">
+    <i class="ti ti-link" style="font-size: 14px; color: var(--text-tertiary);"></i>
+    <span class="url-text">https://reddit.com/r/d100/comments/abc/d100_strange_things_pocket</span>
+    <button class="btn"><i class="ti ti-refresh" style="font-size: 11px;"></i> Erneut analysieren</button>
+    <span style="font-size: 11px; color: var(--text-tertiary);">100 Einträge · 3 unsicher</span>
+  </div>
+
+  <div class="main">
+
+    <section class="source-pane">
+      <div class="label">Quellansicht</div>
+      <div class="source-card">
+        <div class="ttl">D100 - Strange things you find in a pocket</div>
+        <div style="color: var(--text-tertiary); font-size: 10px; margin-bottom: 8px;">posted by u/dm_helper · 3 years ago</div>
+        <span class="ext-tag">extrahiert</span>
+        <div style="font-size: 12px;">
+          1. An old key, but to what?<br>
+          2. A folded note in unknown script<br>
+          3. A pressed four-leaf clover<br>
+          4. Three smooth river pebbles<br>
+          <span style="color: var(--text-tertiary);">… 96 weitere</span>
+        </div>
+      </div>
+      <div class="source-hint">
+        <i class="ti ti-info-circle" style="font-size: 12px;"></i>
+        Klick auf Eintrag rechts → Quelle springt
+      </div>
+    </section>
+
+    <section class="edit-pane">
+      <div class="form-row">
+        <div class="field">
+          <div class="field-label">Name</div>
+          <div class="field-value bold">D100 — Seltsame Dinge in der Hosentasche</div>
+        </div>
+        <div class="field small">
+          <div class="field-label">Typ</div>
+          <div class="field-value select">d100<i class="ti ti-chevron-down chev"></i></div>
+        </div>
+        <div class="field small">
+          <div class="field-label">Sprache</div>
+          <div class="field-value select">EN→DE<i class="ti ti-chevron-down chev"></i></div>
+        </div>
+      </div>
+
+      <div class="entries-label">
+        Einträge <span style="color: var(--text-tertiary);">·</span> klick zum Bearbeiten
+      </div>
+
+      <div class="entries-list">
+        <div class="entry">
+          <span class="num">01</span>
+          <span class="text">Ein alter Schlüssel, aber wofür?</span>
+        </div>
+        <div class="entry warn">
+          <span class="num">02</span>
+          <span class="text">Eine gefaltete Notiz in unbekannter Schrift</span>
+          <span class="badge"><i class="ti ti-alert-triangle" style="font-size: 11px;"></i> unsicher</span>
+        </div>
+        <div class="entry">
+          <span class="num">03</span>
+          <span class="text">Ein gepresstes vierblättriges Kleeblatt</span>
+        </div>
+        <div class="entry">
+          <span class="num">04</span>
+          <span class="text">Drei glatte Flusskiesel</span>
+        </div>
+        <div class="entry more">96 weitere · alle anzeigen</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="ai-block">
+    <div class="ai-label">
+      <i class="ti ti-sparkles" style="font-size: 13px;"></i>
+      KI-Vorschläge · klick zum Übernehmen
+    </div>
+    <div class="chips">
+      <span class="chip-suggest"><i class="ti ti-plus" style="font-size: 10px;"></i> Genre: Fantasy</span>
+      <span class="chip-suggest"><i class="ti ti-plus" style="font-size: 10px;"></i> Kategorie: Items</span>
+      <span class="chip-suggest"><i class="ti ti-plus" style="font-size: 10px;"></i> #whimsical</span>
+      <span class="chip-suggest"><i class="ti ti-plus" style="font-size: 10px;"></i> #low-magic</span>
+      <span class="chip-suggest"><i class="ti ti-plus" style="font-size: 10px;"></i> #everyday</span>
+      <span style="font-size: 11px; color: var(--text-tertiary);">5 weitere</span>
+    </div>
+    <div style="margin-top: 10px;">
+      <span style="font-size: 10px; color: var(--text-tertiary);">Übernommen:</span>
+      <span class="chip-accepted" style="margin-left: 6px;">#fantasy</span>
+      <span class="chip-accepted">#items</span>
+      <span style="font-size: 11px; color: var(--text-tertiary); margin-left: 8px;">+ Tag eingeben</span>
+    </div>
+  </div>
+
+  <div class="source-block">
+    <div class="ai-label">Quelle</div>
+    <div class="source-grid">
+      <span class="lbl">Quelle:</span><span>r/d100 (Reddit)</span>
+      <span class="lbl">Datum:</span><span>28.05.2026</span>
+      <span class="lbl">Autor:</span><span>u/dm_helper</span>
+      <span class="lbl">Lizenz:</span>
+      <span class="license-warn"><i class="ti ti-alert-triangle" style="font-size: 11px;"></i> nicht angegeben · festlegen</span>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <span style="font-size: 11px; color: var(--text-tertiary);">Nach dem Speichern:</span>
+    <label><input type="checkbox" checked> Weitere URL importieren</label>
+    <label><input type="checkbox"> Sofort öffnen</label>
+    <span style="margin-left: auto; font-size: 11px; color: var(--text-tertiary);">2 Tags · Genre & Kategorie offen</span>
+  </div>
+
+</div>
+
+<div class="legend">
+  Wireframe „Import" — Single-Pane statt Wizard. Quellansicht links und Editor rechts sind verknüpft: Klick auf einen Eintrag hebt die Original-Stelle hervor. Konfidenz-Warnung an Eintrag 02 (gelb). KI-Vorschläge als Plus-Chips, übernommene als plain Chips. Fehlende Lizenz als gelber Warn-Hinweis.
+</div>
+
+</body>
+</html>

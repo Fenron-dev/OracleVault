@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>OracleVault — Wireframe: Library</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.0.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --bg-primary: #FFFFFF;
+    --bg-secondary: #F7F6F4;
+    --border: #E4E1DB;
+    --text-primary: #1F1E1B;
+    --text-secondary: #5C5A55;
+    --text-tertiary: #8F8B83;
+    --accent-bg: #DDEEEA;
+    --accent-text: #0F5A4A;
+    --accent-border: #1F7A65;
+    --warning-bg: #FFF4DA;
+    --warning-text: #8A5A0F;
+    --success-bg: #DDF2DC;
+    --success-text: #1F6A2A;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #1A1817;
+      --bg-secondary: #232220;
+      --border: #3A3835;
+      --text-primary: #F0EFED;
+      --text-secondary: #B5B2AB;
+      --text-tertiary: #807C74;
+      --accent-bg: #1A3E37;
+      --accent-text: #6FB8A5;
+      --accent-border: #2D6B5E;
+      --warning-bg: #3E3315;
+      --warning-text: #D9B870;
+      --success-bg: #1E3F22;
+      --success-text: #7AC481;
+    }
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    margin: 0;
+    padding: 24px;
+    line-height: 1.4;
+  }
+  .frame {
+    max-width: 1080px;
+    margin: 0 auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar input {
+    border: none; background: transparent; outline: none;
+    flex: 1; font-size: 13px; color: var(--text-primary);
+  }
+  .search {
+    flex: 1; display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; margin-left: 16px;
+    background: var(--bg-secondary); border-radius: 6px;
+    max-width: 340px;
+  }
+  .btn {
+    background: var(--bg-primary); border: 1px solid var(--border);
+    padding: 5px 12px; font-size: 12px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px;
+    color: var(--text-primary); border-radius: 6px;
+  }
+  .btn:hover { background: var(--bg-secondary); }
+  kbd {
+    font-size: 10px; padding: 2px 6px; border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text-tertiary); font-family: inherit;
+  }
+  .chips-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border);
+  }
+  .chip {
+    font-size: 11px; padding: 3px 10px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .chip.active { background: var(--accent-bg); color: var(--accent-text); }
+  .chip.muted { background: var(--bg-secondary); color: var(--text-secondary); }
+  .chip.outline { background: var(--bg-primary); border: 1px solid var(--border); }
+  .add-link {
+    font-size: 11px; color: var(--text-tertiary); cursor: pointer;
+    padding: 3px 6px;
+  }
+  .main {
+    display: grid; grid-template-columns: 200px 1fr 280px;
+    min-height: 580px;
+  }
+  .sidebar {
+    border-right: 1px solid var(--border); padding: 14px 8px;
+    font-size: 12px;
+  }
+  .sidebar h3 {
+    font-size: 10px; color: var(--text-tertiary);
+    padding: 6px 10px; margin: 14px 0 4px; font-weight: 500;
+    text-transform: none; letter-spacing: 0;
+  }
+  .sidebar h3:first-child { margin-top: 0; }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 10px; border-radius: 5px; cursor: pointer;
+  }
+  .nav-item:hover { background: var(--bg-secondary); }
+  .nav-item.selected { background: var(--bg-secondary); font-weight: 500; }
+  .nav-item .count {
+    margin-left: auto; color: var(--text-tertiary); font-size: 11px;
+  }
+  .nav-item.inbox .count {
+    background: var(--accent-bg); color: var(--accent-text);
+    padding: 1px 6px; border-radius: 999px; font-size: 10px;
+  }
+  .list { overflow: hidden; }
+  .row {
+    padding: 10px 14px; display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border); cursor: pointer;
+  }
+  .row:hover { background: var(--bg-secondary); }
+  .row.selected {
+    background: var(--accent-bg);
+    border-left: 3px solid var(--accent-border);
+    padding-left: 11px;
+  }
+  .row .icon { font-size: 18px; color: var(--text-secondary); }
+  .row.selected .icon { color: var(--accent-text); }
+  .row .body { flex: 1; min-width: 0; }
+  .row .name { font-size: 13px; }
+  .row.selected .name { font-weight: 500; }
+  .row .meta {
+    font-size: 11px; color: var(--text-secondary);
+    display: flex; gap: 6px; margin-top: 2px;
+  }
+  .meta .dot { color: var(--text-tertiary); }
+  .row .side-icon { font-size: 14px; color: var(--text-tertiary); }
+  .detail {
+    border-left: 1px solid var(--border); padding: 16px 16px;
+    background: var(--bg-secondary);
+  }
+  .detail h2 {
+    font-size: 14px; font-weight: 500; margin: 0 0 2px;
+  }
+  .detail .meta-line {
+    font-size: 11px; color: var(--text-secondary); margin-bottom: 12px;
+  }
+  .detail .tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 14px; }
+  .roll-btn {
+    width: 100%; padding: 8px; font-size: 12px; cursor: pointer;
+    background: var(--bg-primary); border: 1px solid var(--accent-border);
+    color: var(--accent-text); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    margin-bottom: 14px; font-weight: 500;
+  }
+  .roll-btn:hover { background: var(--accent-bg); }
+  .section-label {
+    font-size: 10px; color: var(--text-tertiary); margin-bottom: 5px;
+  }
+  .preview-entries { font-size: 12px; line-height: 1.7; }
+  .preview-entries .entry { display: flex; gap: 10px; }
+  .preview-entries .num { color: var(--text-tertiary); width: 22px; }
+  .links-list { font-size: 12px; }
+  .links-list .link-item {
+    display: flex; align-items: center; gap: 6px; padding: 2px 0;
+    color: var(--accent-text);
+  }
+  .links-list .link-item .i { color: var(--text-tertiary); font-size: 12px; }
+  .legend {
+    max-width: 1080px; margin: 16px auto 0;
+    font-size: 11px; color: var(--text-tertiary);
+    padding: 0 16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+  <div class="topbar">
+    <i class="ti ti-stack-2" style="font-size: 16px;"></i>
+    <strong style="font-weight: 500;">Alle Tabellen</strong>
+    <span style="color: var(--text-tertiary); font-size: 12px;">247</span>
+    <div class="search">
+      <i class="ti ti-search" style="font-size: 14px; color: var(--text-tertiary);"></i>
+      <input type="text" placeholder="Tabellen, Einträge, Tags durchsuchen…">
+      <kbd>⌘K</kbd>
+    </div>
+    <button class="btn"><i class="ti ti-filter" style="font-size: 14px;"></i> Filter</button>
+    <button class="btn"><i class="ti ti-file-import" style="font-size: 14px;"></i> Import</button>
+  </div>
+
+  <div class="chips-row">
+    <span class="chip active">Genre: Fantasy <i class="ti ti-x" style="font-size: 11px;"></i></span>
+    <span class="chip muted">Hat Audio <i class="ti ti-x" style="font-size: 11px;"></i></span>
+    <span class="chip muted">Lizenz: CC-BY <i class="ti ti-x" style="font-size: 11px;"></i></span>
+    <span class="add-link">+ Filter</span>
+  </div>
+
+  <div class="main">
+
+    <aside class="sidebar">
+      <h3>Kategorien</h3>
+      <div class="nav-item selected">
+        <i class="ti ti-skull" style="font-size: 14px;"></i> Bestiarium
+        <span class="count">42</span>
+      </div>
+      <div class="nav-item">
+        <i class="ti ti-user" style="font-size: 14px;"></i> NSCs
+        <span class="count">28</span>
+      </div>
+      <div class="nav-item">
+        <i class="ti ti-tower" style="font-size: 14px;"></i> Dungeons
+        <span class="count">19</span>
+      </div>
+      <div class="nav-item">
+        <i class="ti ti-cloud" style="font-size: 14px;"></i> Wetter
+        <span class="count">8</span>
+      </div>
+      <div class="nav-item">
+        <i class="ti ti-package" style="font-size: 14px;"></i> Items
+        <span class="count">31</span>
+      </div>
+      <div class="nav-item">
+        <i class="ti ti-photo" style="font-size: 14px;"></i> Battlemaps
+        <span class="count">64</span>
+      </div>
+
+      <h3>Quellen</h3>
+      <div class="nav-item">Eigene</div>
+      <div class="nav-item">DMs Guild</div>
+      <div class="nav-item">r/d100</div>
+
+      <h3>Sammlung</h3>
+      <div class="nav-item">
+        <i class="ti ti-bookmark" style="font-size: 14px;"></i> Smart Filter
+        <span class="count">5</span>
+      </div>
+      <div class="nav-item inbox">
+        <i class="ti ti-inbox" style="font-size: 14px;"></i> Inbox
+        <span class="count">7</span>
+      </div>
+    </aside>
+
+    <main class="list">
+      <div class="row selected">
+        <i class="ti ti-dice-5 icon"></i>
+        <div class="body">
+          <div class="name">D100 — Seltsame Dinge in der Hosentasche</div>
+          <div class="meta"><span>r/d100</span><span class="dot">·</span><span>100 Einträge</span><span class="dot">·</span><span>CC-BY</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <i class="ti ti-dice-3 icon"></i>
+        <div class="body">
+          <div class="name">D20 — Goblin-Varianten</div>
+          <div class="meta"><span>Eigene</span><span class="dot">·</span><span>20 Einträge</span><span class="dot">·</span><span>Bestiarium</span></div>
+        </div>
+        <i class="ti ti-link side-icon" title="Verknüpft"></i>
+      </div>
+      <div class="row">
+        <i class="ti ti-photo icon"></i>
+        <div class="body">
+          <div class="name">Cave Battlemap Pack — 12 Karten</div>
+          <div class="meta"><span>Patreon: Czepeku</span><span class="dot">·</span><span>Deck</span><span class="dot">·</span><span>5ft Grid</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <i class="ti ti-music icon"></i>
+        <div class="body">
+          <div class="name">Ambient — Tavern Loops</div>
+          <div class="meta"><span>Tabletop Audio</span><span class="dot">·</span><span>14 Tracks</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <i class="ti ti-cards icon"></i>
+        <div class="body">
+          <div class="name">Tarot — Rider-Waite</div>
+          <div class="meta"><span>Public Domain</span><span class="dot">·</span><span>78 Karten</span><span class="dot">·</span><span>Deck</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <i class="ti ti-dice icon"></i>
+        <div class="body">
+          <div class="name">2d6 — Reisevorfälle</div>
+          <div class="meta"><span>Mythic GME</span><span class="dot">·</span><span>11 Einträge</span><span class="dot">·</span><span>gewichtet</span></div>
+        </div>
+        <i class="ti ti-language side-icon" title="DE/EN"></i>
+      </div>
+      <div class="row">
+        <i class="ti ti-mood-smile icon"></i>
+        <div class="body">
+          <div class="name">D30 — NSC-Persönlichkeiten</div>
+          <div class="meta"><span>Eigene</span><span class="dot">·</span><span>30 Einträge</span></div>
+        </div>
+      </div>
+      <div class="row">
+        <i class="ti ti-target icon"></i>
+        <div class="body">
+          <div class="name">D100 — Zufallsbegegnungen Stadt</div>
+          <div class="meta"><span>r/BehindTheTables</span><span class="dot">·</span><span>100 Einträge</span></div>
+        </div>
+      </div>
+    </main>
+
+    <aside class="detail">
+      <h2>D100 — Seltsame Dinge in der Hosentasche</h2>
+      <div class="meta-line">r/d100 · 100 Einträge · CC-BY 4.0</div>
+      <div class="tags">
+        <span class="chip outline">#fantasy</span>
+        <span class="chip outline">#whimsical</span>
+        <span class="chip outline">#items</span>
+      </div>
+      <button class="roll-btn">
+        <i class="ti ti-dice-5" style="font-size: 14px;"></i>
+        Würfeln (d100)
+      </button>
+
+      <div class="section-label">Vorschau</div>
+      <div class="preview-entries">
+        <div class="entry"><span class="num">01</span><span>Ein gepresstes vierblättriges Kleeblatt</span></div>
+        <div class="entry"><span class="num">02</span><span>Ein kleiner Schlüssel, wozu?</span></div>
+        <div class="entry"><span class="num">03</span><span>Hälfte eines Liebesbriefs</span></div>
+        <div class="entry" style="color: var(--text-tertiary); font-size: 11px;"><span class="num"></span><span>… 97 weitere</span></div>
+      </div>
+
+      <div class="section-label" style="margin-top: 16px;">Verlinkt</div>
+      <div class="links-list">
+        <div class="link-item"><i class="ti ti-link i"></i><span>D20 NSCs → Taschendieb</span></div>
+        <div class="link-item" style="color: var(--text-secondary);"><i class="ti ti-corner-up-left i"></i><span>Erwähnt in 3 Tabellen</span></div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<div class="legend">
+  Wireframe „Library" — Hauptansicht (Desktop). Petrol/Teal als Akzentfarbe. Akzent-Markierung des aktiven Listen-Eintrags, kollabierbare Sidebar links und Detail rechts. Konfidenz-Marker, Wiki-Link- und Subtable-Indikatoren werden im Detail-Wireframe gezeigt.
+</div>
+
+</body>
+</html>
