@@ -1,0 +1,45 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: oracle_vault
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.4
+          channel: stable
+          cache: true
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code generation (Drift + Riverpod)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build macOS (release, ad-hoc signed)
+        run: flutter build macos --release
+
+      - name: Zip .app bundle
+        run: |
+          cd build/macos/Build/Products/Release
+          ditto -c -k --keepParent oracle_vault.app oracle_vault-macos.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oracle_vault-macos
+          path: oracle_vault/build/macos/Build/Products/Release/oracle_vault-macos.zip
+          if-no-files-found: error
