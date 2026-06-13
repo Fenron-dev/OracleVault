@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **OracleVault** is a local-first Flutter app for managing random tables, oracles, and drawable collections (Tarot decks, battlemaps, tokens, ambient sounds) for pen-&-paper and solo RPGs. It is explicitly a **data foundation**, not a play tool — rolling/generating/macros belong in downstream apps that consume the vault.
 
-The full concept is in [Konzept/OracleVault_Konzept.md](Konzept/OracleVault_Konzept.md).
+The detailed concept document is kept private and is **not** part of this public repository.
 
 ---
 

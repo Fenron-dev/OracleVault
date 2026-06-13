@@ -12,7 +12,7 @@ jobs:
       run:
         working-directory: oracle_vault
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: subosito/flutter-action@v2
         with:
@@ -38,7 +38,7 @@ jobs:
           ditto -c -k --keepParent oracle_vault.app oracle_vault-macos.zip
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: oracle_vault-macos
           path: oracle_vault/build/macos/Build/Products/Release/oracle_vault-macos.zip
