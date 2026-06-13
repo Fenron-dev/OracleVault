@@ -82,6 +82,10 @@ dependencies:
   # Hinweis: flutter_secure_storage wurde entfernt — API-Keys in SharedPreferences,
   # da Keychain auf ad-hoc-signierten macOS-Builds nicht funktioniert (-34018).
 
+  # ─── Medien (Phase 4) ─────────────────────────────────────────────────────
+  # crypto: SHA-256-Hash für Dublettenerkennung beim Medien-Import (Streaming).
+  crypto: ^3.0.6
+
   # ─── Hilfspakete ──────────────────────────────────────────────────────────
   intl: ^0.20.2
   gap: ^3.0.1

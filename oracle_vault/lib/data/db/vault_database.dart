@@ -37,6 +37,7 @@ import 'daos/entry_dao.dart';
 import 'daos/tag_dao.dart';
 import 'daos/category_dao.dart';
 import 'daos/source_dao.dart';
+import 'daos/media_dao.dart';
 
 part 'vault_database.g.dart';
 
@@ -73,6 +74,7 @@ part 'vault_database.g.dart';
     TagDao,
     CategoryDao,
     SourceDao,
+    MediaDao,
   ],
 )
 class VaultDatabase extends _$VaultDatabase {

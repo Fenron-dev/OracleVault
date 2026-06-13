@@ -13,6 +13,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/vault/vault_manager.dart';
+import '../services/media/media_service.dart';
 
 /// Der aktuell geöffnete Vault.
 ///
@@ -25,3 +26,11 @@ final activeVaultProvider =
 /// Phase 1: wird aus config.json des Vaults gelesen.
 final themeModeStringProvider =
     StateProvider<String>((ref) => 'system');
+
+/// Medien-Service des aktuell geöffneten Vaults (null = kein Vault offen).
+/// Phase 4: Import, Deduplizierung und Verwaltung von Datei-Assets.
+final mediaServiceProvider = Provider<MediaService?>((ref) {
+  final vault = ref.watch(activeVaultProvider);
+  if (vault == null) return null;
+  return MediaService(db: vault.database, vaultPath: vault.vaultPath);
+});

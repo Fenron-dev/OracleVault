@@ -5551,6 +5551,7 @@ abstract class _$VaultDatabase extends GeneratedDatabase {
   late final TagDao tagDao = TagDao(this as VaultDatabase);
   late final CategoryDao categoryDao = CategoryDao(this as VaultDatabase);
   late final SourceDao sourceDao = SourceDao(this as VaultDatabase);
+  late final MediaDao mediaDao = MediaDao(this as VaultDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
