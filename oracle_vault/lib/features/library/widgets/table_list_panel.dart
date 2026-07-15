@@ -15,6 +15,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/constants.dart';
 import '../../../core/theme.dart';
 import '../../../data/db/vault_database.dart';
+import '../../../domain/collection_type.dart';
+import '../collection_icon.dart';
 import '../library_providers.dart';
 
 const _kLangOptions = {
@@ -619,6 +621,7 @@ class _BulkCollectionDialogState
     extends ConsumerState<_BulkCollectionDialog> {
   bool _creatingNew = false;
   bool _saving = false;
+  CollectionType _newType = CollectionType.supplement;
   final _nameCtrl = TextEditingController();
 
   @override
@@ -644,7 +647,7 @@ class _BulkCollectionDialogState
     final db = ref.read(vaultDbProvider);
     if (db == null) return;
     final id = await db.collectionDao
-        .createCollection(name: name, type: 'supplement');
+        .createCollection(name: name, type: _newType.wireValue);
     await db.collectionDao
         .bulkAssignToCollection(id, widget.selectedIds.toList());
     ref.read(selectedTableIdsProvider.notifier).state = const {};
@@ -676,7 +679,8 @@ class _BulkCollectionDialogState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     ...collections.map((c) => ListTile(
-                          leading: Icon(_icon(c.type), size: 16),
+                          leading:
+                              Icon(collectionIconFor(c.type), size: 16),
                           title: Text(c.name,
                               style: const TextStyle(fontSize: 13)),
                           dense: true,
@@ -686,26 +690,60 @@ class _BulkCollectionDialogState
                     if (_creatingNew)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-                        child: Row(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _nameCtrl,
-                                autofocus: true,
-                                style: const TextStyle(fontSize: 13),
-                                decoration: const InputDecoration(
-                                  hintText: 'Name der Collection …',
-                                  isDense: true,
-                                  contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _nameCtrl,
+                                    autofocus: true,
+                                    style: const TextStyle(fontSize: 13),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Name der Collection …',
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 8),
+                                    ),
+                                    onSubmitted: (_) => _createAndAssign(),
+                                  ),
                                 ),
-                                onSubmitted: (_) => _createAndAssign(),
-                              ),
+                                IconButton(
+                                  icon: const Icon(Icons.check, size: 16),
+                                  onPressed:
+                                      _saving ? null : _createAndAssign,
+                                ),
+                              ],
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.check, size: 16),
-                              onPressed:
-                                  _saving ? null : _createAndAssign,
+                            const SizedBox(height: 4),
+                            DropdownButtonFormField<CollectionType>(
+                              initialValue: _newType,
+                              isDense: true,
+                              style: const TextStyle(fontSize: 13),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 8),
+                              ),
+                              items: [
+                                for (final t in CollectionType.values)
+                                  DropdownMenuItem(
+                                    value: t,
+                                    child: Row(
+                                      children: [
+                                        Icon(collectionIconFor(t.wireValue),
+                                            size: 16),
+                                        const SizedBox(width: 8),
+                                        Text(t.label),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                              onChanged: _saving
+                                  ? null
+                                  : (t) => setState(() =>
+                                      _newType = t ?? _newType),
                             ),
                           ],
                         ),
@@ -730,12 +768,6 @@ class _BulkCollectionDialogState
       ],
     );
   }
-
-  IconData _icon(String type) => switch (type) {
-        'deck' => Icons.style_outlined,
-        'supplement' => Icons.menu_book_outlined,
-        _ => Icons.folder_special_outlined,
-      };
 }
 
 class _BulkCategoryDialog extends ConsumerWidget {

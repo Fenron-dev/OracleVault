@@ -11,7 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
-import '../../../data/db/vault_database.dart';
+import '../collection_icon.dart';
 import '../library_providers.dart';
 
 class LibrarySidebar extends ConsumerWidget {
@@ -231,7 +231,7 @@ class _SupplementsSection extends ConsumerWidget {
           children: [
             const _SectionHeader('Supplements'),
             ...collections.map((c) => _NavItem(
-                  icon: _collectionIcon(c),
+                  icon: collectionIconFor(c.type),
                   label: c.name,
                   selected: filter.collectionId == c.id,
                   onTap: () {
@@ -249,11 +249,6 @@ class _SupplementsSection extends ConsumerWidget {
     );
   }
 
-  IconData _collectionIcon(Collection c) => switch (c.type) {
-        'deck' => Icons.style_outlined,
-        'supplement' => Icons.menu_book_outlined,
-        _ => Icons.folder_special_outlined,
-      };
 }
 
 // ── Quellen-Sektion ───────────────────────────────────────────────────────────

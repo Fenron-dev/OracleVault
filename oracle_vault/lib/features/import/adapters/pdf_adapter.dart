@@ -9,8 +9,9 @@
 //              gilt als „möglicherweise gescannt".
 //
 //   Stufe 2 – OCR-Fallback via OcrService:
-//              iOS/Android: ML Kit Latin-Script.
-//              macOS: Stub (Phase 4 bringt Apple Vision).
+//              macOS/iOS: Apple Vision (lokal/offline).
+//              Android: ML Kit Latin-Script.
+//              Windows/Linux: kein OCR verfügbar → Hinweis in sourceText.
 //              Für jeden sparse Seitenblock wird ein Hinweis in sourceText notiert.
 //
 //   Den gesamten extrahierten Text durchläuft danach die TextAdapter-Heuristik,
@@ -100,7 +101,7 @@ class PdfAdapter implements ImportAdapter {
       final hint = ocr.isAvailable
           ? 'OCR auf ${scannedPages.length} Seite(n) angewendet.'
           : 'Seite(n) ${scannedPages.join(', ')} scheinen gescannt – '
-              'OCR folgt in Phase 4 (Apple Vision / ML Kit).';
+              'OCR auf dieser Plattform nicht verfügbar.';
       sourceText += '\n\n[$hint]';
     }
 
