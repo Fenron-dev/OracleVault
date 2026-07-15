@@ -123,6 +123,27 @@ final allCollectionsProvider = StreamProvider<List<Collection>>((ref) {
   return db?.collectionDao.watchAll() ?? const Stream.empty();
 });
 
+/// Die aktuell im Filter aktive Collection (null wenn keine gefiltert wird).
+final activeCollectionProvider = FutureProvider<Collection?>((ref) async {
+  final db = ref.watch(vaultDbProvider);
+  final id = ref.watch(libraryFilterProvider).collectionId;
+  if (db == null || id == null) return null;
+  return db.collectionDao.fetchById(id);
+});
+
+/// Einträge mit angehängtem Medium für die aktive Collection — Medien-Grid.
+final collectionMediaEntriesProvider = StreamProvider<List<Entry>>((ref) {
+  final db = ref.watch(vaultDbProvider);
+  final id = ref.watch(libraryFilterProvider).collectionId;
+  if (db == null || id == null) return const Stream.empty();
+  return db.collectionDao.watchMediaEntriesFor(id);
+});
+
+/// Ansichtsmodus des mittleren Panels: Liste oder Medien-Grid.
+/// Grid ist nur sinnvoll, wenn eine Collection aktiv ist.
+final libraryViewModeProvider =
+    StateProvider<LibraryViewMode>((ref) => LibraryViewMode.list);
+
 /// Tabellen-Liste nach aktivem Filter und Suche.
 /// Übersetzungs-Tabellen werden grundsätzlich ausgeblendet — sie sind
 /// über die Sprach-Chips im Detail-Panel erreichbar, nicht als eigene Zeilen.

@@ -16,6 +16,7 @@ import '../../core/theme.dart';
 import '../command_palette/command_palette.dart';
 import 'library_providers.dart';
 import 'library_state.dart';
+import 'widgets/collection_media_grid.dart';
 import 'widgets/library_sidebar.dart';
 import 'widgets/table_list_panel.dart';
 import 'widgets/table_detail_panel.dart';
@@ -70,7 +71,7 @@ class LibraryScreen extends ConsumerWidget {
                   ),
                   VerticalDivider(width: 1, color: borderColor),
                 ],
-                const Expanded(child: TableListPanel()),
+                const Expanded(child: _MiddlePanel()),
                 if (panels.detail) ...[
                   VerticalDivider(width: 1, color: borderColor),
                   SizedBox(
@@ -82,6 +83,110 @@ class LibraryScreen extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Mittleres Panel: Tabellen-Liste oder Collection-Medien-Grid ────────────────
+
+class _MiddlePanel extends ConsumerWidget {
+  const _MiddlePanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final collectionActive =
+        ref.watch(libraryFilterProvider).collectionId != null;
+    final viewMode = ref.watch(libraryViewModeProvider);
+    final showGrid = collectionActive && viewMode == LibraryViewMode.grid;
+
+    return Column(
+      children: [
+        // Umschalter nur zeigen, wenn eine Collection aktiv ist.
+        if (collectionActive) ...[
+          _ViewModeBar(viewMode: viewMode),
+          Divider(height: 1, color: AppTheme.border(context)),
+        ],
+        Expanded(
+          child: showGrid
+              ? const CollectionMediaGrid()
+              : const TableListPanel(),
+        ),
+      ],
+    );
+  }
+}
+
+class _ViewModeBar extends ConsumerWidget {
+  final LibraryViewMode viewMode;
+  const _ViewModeBar({required this.viewMode});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    void set(LibraryViewMode mode) =>
+        ref.read(libraryViewModeProvider.notifier).state = mode;
+
+    return SizedBox(
+      height: 34,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.sp12, vertical: 4),
+        child: Row(
+          children: [
+            _SegBtn(
+              icon: Icons.view_list_outlined,
+              label: 'Liste',
+              selected: viewMode == LibraryViewMode.list,
+              onTap: () => set(LibraryViewMode.list),
+            ),
+            const SizedBox(width: AppTheme.sp4),
+            _SegBtn(
+              icon: Icons.grid_view_outlined,
+              label: 'Medien',
+              selected: viewMode == LibraryViewMode.grid,
+              onTap: () => set(LibraryViewMode.grid),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SegBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SegBtn({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final fg = selected ? AppTheme.accentText(context) : cs.onSurfaceVariant;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: AppTheme.sp8),
+        decoration: BoxDecoration(
+          color: selected ? AppTheme.accentBg(context) : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: fg),
+            const SizedBox(width: 5),
+            Text(label, style: TextStyle(fontSize: 12, color: fg)),
+          ],
+        ),
       ),
     );
   }

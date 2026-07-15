@@ -10,4 +10,6 @@ mixin _$CollectionDaoMixin on DatabaseAccessor<VaultDatabase> {
   $OracleTablesTable get oracleTables => attachedDatabase.oracleTables;
   $CollectionTablesTable get collectionTables =>
       attachedDatabase.collectionTables;
+  $MediaFilesTable get mediaFiles => attachedDatabase.mediaFiles;
+  $EntriesTable get entries => attachedDatabase.entries;
 }

@@ -11,12 +11,13 @@ import 'package:uuid/uuid.dart';
 import '../vault_database.dart';
 import '../tables/collections.dart';
 import '../tables/oracle_tables.dart';
+import '../tables/entries.dart';
 
 part 'collection_dao.g.dart';
 
 const _uuid = Uuid();
 
-@DriftAccessor(tables: [Collections, CollectionTables, OracleTables])
+@DriftAccessor(tables: [Collections, CollectionTables, OracleTables, Entries])
 class CollectionDao extends DatabaseAccessor<VaultDatabase>
     with _$CollectionDaoMixin {
   CollectionDao(super.db);
@@ -126,6 +127,25 @@ class CollectionDao extends DatabaseAccessor<VaultDatabase>
           ..where((t) => t.collectionId.equals(collectionId)))
         .get();
     return rows.map((r) => r.tableId).toSet();
+  }
+
+  /// Alle Einträge mit angehängtem Medium (mediaId != null) über alle Tabellen
+  /// einer Collection hinweg — für das Medien-Grid (Battlemaps/Token/Deck).
+  /// Sortiert nach Tabellen-Position, dann Eintrags-Position.
+  Stream<List<Entry>> watchMediaEntriesFor(String collectionId) {
+    final query = select(entries).join([
+      innerJoin(
+        collectionTables,
+        collectionTables.tableId.equalsExp(entries.tableId) &
+            collectionTables.collectionId.equals(collectionId),
+      ),
+    ])
+      ..where(entries.mediaId.isNotNull())
+      ..orderBy([
+        OrderingTerm.asc(collectionTables.position),
+        OrderingTerm.asc(entries.position),
+      ]);
+    return query.map((row) => row.readTable(entries)).watch();
   }
 
   /// Collection in der eine Tabelle enthalten ist (null = keine).

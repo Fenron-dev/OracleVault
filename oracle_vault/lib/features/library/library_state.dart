@@ -82,6 +82,9 @@ class PanelVisibility {
 /// Sidebar-Sektion, die gerade aktiv ist.
 enum SidebarSection { categories, tags, sources, smartFilters }
 
+/// Ansichtsmodus des mittleren Panels.
+enum LibraryViewMode { list, grid }
+
 /// Ergebnis eines Test-Wurfs im Detail-Panel.
 class TestRollResult {
   final String content;
