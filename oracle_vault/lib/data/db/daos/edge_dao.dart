@@ -39,7 +39,67 @@ class EdgeDao extends DatabaseAccessor<VaultDatabase> with _$EdgeDaoMixin {
   Future<void> deleteEdge(String id) =>
       (delete(edges)..where((e) => e.id.equals(id))).go();
 
+  /// Ersetzt alle Wiki-Link-Edges ('wikilink' + 'embed') die von
+  /// [fromType]/[fromId] ausgehen durch [newEdges] — der Save-Hook ruft das
+  /// nach jedem Speichern auf, damit die Edges den aktuellen Text spiegeln.
+  /// Läuft in einer Transaktion (kein Zwischenzustand sichtbar).
+  Future<void> replaceWikiLinkEdges({
+    required String fromType,
+    required String fromId,
+    required List<EdgesCompanion> newEdges,
+  }) async {
+    await transaction(() async {
+      await (delete(edges)
+            ..where((e) =>
+                e.fromType.equals(fromType) &
+                e.fromId.equals(fromId) &
+                e.relation.isIn(const ['wikilink', 'embed'])))
+          .go();
+      for (final edge in newEdges) {
+        await into(edges).insert(edge);
+      }
+    });
+  }
+
+  /// Baut eine Wikilink-/Embed-Edge (ohne sie zu speichern).
+  static EdgesCompanion buildLinkEdge({
+    required String fromType,
+    required String fromId,
+    required String toType,
+    required String toId,
+    required bool isEmbed,
+    String? metadataJson,
+  }) =>
+      EdgesCompanion.insert(
+        id: _uuid.v4(),
+        fromType: fromType,
+        fromId: fromId,
+        toType: toType,
+        toId: toId,
+        relation: isEmbed ? 'embed' : 'wikilink',
+        metadataJson: Value(metadataJson),
+      );
+
   // ── Lesen ──────────────────────────────────────────────────────────────────
+
+  /// Alle Wiki-Link-/Embed-Edges, die auf [toType]/[toId] zeigen — Backlinks.
+  /// Eine einzige Query über die Edges-Tabelle (siehe edges.dart-Konzept).
+  Stream<List<Edge>> watchBacklinksTo(String toType, String toId) =>
+      (select(edges)
+            ..where((e) =>
+                e.toType.equals(toType) &
+                e.toId.equals(toId) &
+                e.relation.isIn(const ['wikilink', 'embed'])))
+          .watch();
+
+  /// Alle ausgehenden Wiki-Link-/Embed-Edges von [fromType]/[fromId].
+  Future<List<Edge>> fetchOutgoingLinks(String fromType, String fromId) =>
+      (select(edges)
+            ..where((e) =>
+                e.fromType.equals(fromType) &
+                e.fromId.equals(fromId) &
+                e.relation.isIn(const ['wikilink', 'embed'])))
+          .get();
 
   /// Alle Übersetzungs-Tabellen für [sourceTableId]:
   /// Gibt OracleTable-Objekte zurück (language, name etc. schon bekannt).

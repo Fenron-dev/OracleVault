@@ -20,6 +20,7 @@ import '../../data/db/vault_database.dart';
 import '../../services/llm/llm_profiles_store.dart';
 import '../../services/llm/llm_service.dart';
 import '../../services/llm/llm_tasks.dart';
+import '../../services/wikilink_service.dart';
 import '../library/library_providers.dart';
 import 'widgets/entries_editor.dart';
 
@@ -161,6 +162,12 @@ class _TableFormScreenState extends ConsumerState<TableFormScreen> {
           .toList();
 
       await entryDao.replaceAll(tableId, entryCompanions);
+
+      // Save-Hook: [[Wiki-Links]] im Text als Edges materialisieren.
+      final db = ref.read(vaultDbProvider);
+      if (db != null) {
+        await WikiLinkService(db: db).materializeForTable(tableId);
+      }
 
       // Selektion auf gespeicherte Tabelle setzen.
       ref.read(selectedTableIdProvider.notifier).state = tableId;

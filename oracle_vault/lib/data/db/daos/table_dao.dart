@@ -37,6 +37,15 @@ class TableDao extends DatabaseAccessor<VaultDatabase> with _$TableDaoMixin {
   Stream<OracleTable?> watchById(String id) =>
       (select(oracleTables)..where((t) => t.id.equals(id))).watchSingleOrNull();
 
+  /// Erste Tabelle mit passendem Namen (case-insensitiv) — für Wiki-Link-
+  /// Auflösung. Null wenn keine existiert.
+  Future<OracleTable?> fetchByName(String name) =>
+      (select(oracleTables)
+            ..where((t) => t.name.lower().equals(name.toLowerCase().trim()))
+            ..orderBy([(t) => OrderingTerm.asc(t.createdAt)])
+            ..limit(1))
+          .getSingleOrNull();
+
   /// Tabellen einer Kategorie.
   Stream<List<OracleTable>> watchByCategory(String categoryId) =>
       (select(oracleTables)

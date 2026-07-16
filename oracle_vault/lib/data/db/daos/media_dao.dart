@@ -6,6 +6,7 @@
 // PHASE: 4
 
 import 'package:drift/drift.dart';
+import 'package:path/path.dart' as p;
 
 import '../vault_database.dart';
 import '../tables/media_files.dart';
@@ -39,6 +40,19 @@ class MediaDao extends DatabaseAccessor<VaultDatabase> with _$MediaDaoMixin {
   Future<MediaFile?> fetchByHash(String hash) =>
       (select(mediaFiles)..where((m) => m.hash.equals(hash)))
           .getSingleOrNull();
+
+  /// Erstes Asset mit passendem [title] (case-insensitiv) — für die
+  /// Wiki-Link-Auflösung von `![[name.png]]`. Eine evtl. Dateiendung im
+  /// Suchbegriff wird entfernt, weil [MediaService] den Titel als Basename
+  /// ohne Endung speichert. Null wenn keines passt.
+  Future<MediaFile?> fetchByTitle(String name) {
+    final base = p.basenameWithoutExtension(name).toLowerCase().trim();
+    return (select(mediaFiles)
+          ..where((m) => m.title.lower().equals(base))
+          ..orderBy([(m) => OrderingTerm.asc(m.createdAt)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
 
   /// Zählt, wie viele Records auf denselben Hash zeigen — wird vor dem Löschen
   /// der physischen Datei geprüft, damit kein noch referenziertes Asset

@@ -32,6 +32,17 @@ class EntryDao extends DatabaseAccessor<VaultDatabase> with _$EntryDaoMixin {
             ..orderBy([(e) => OrderingTerm.asc(e.position)]))
           .get();
 
+  /// Erster Eintrag einer Tabelle mit passendem [content] (case-insensitiv) —
+  /// für Wiki-Link-Auflösung von `[[Table#Entry]]`. Null wenn keiner passt.
+  Future<Entry?> fetchByContent(String tableId, String content) =>
+      (select(entries)
+            ..where((e) =>
+                e.tableId.equals(tableId) &
+                e.content.lower().equals(content.toLowerCase().trim()))
+            ..orderBy([(e) => OrderingTerm.asc(e.position)])
+            ..limit(1))
+          .getSingleOrNull();
+
   Future<int> countForTable(String tableId) async {
     final count = countAll();
     final query = selectOnly(entries)

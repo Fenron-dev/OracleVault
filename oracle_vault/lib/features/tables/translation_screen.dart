@@ -27,6 +27,7 @@ import '../../data/db/vault_database.dart';
 import '../../services/llm/llm_profiles_store.dart';
 import '../../services/llm/llm_service.dart';
 import '../../services/llm/llm_tasks.dart';
+import '../../services/wikilink_service.dart';
 import '../library/library_providers.dart';
 
 const _uuid = Uuid();
@@ -262,6 +263,9 @@ class _TranslationScreenState extends ConsumerState<TranslationScreen> {
         ));
       }
       await db.entryDao.replaceAll(newTableId, companions);
+
+      // Save-Hook: [[Wiki-Links]] im übersetzten Text materialisieren.
+      await WikiLinkService(db: db).materializeForTable(newTableId);
 
       // ── Edge: translation_of verknüpfen ──────────────────────────────────
       await db.edgeDao.linkTranslation(
