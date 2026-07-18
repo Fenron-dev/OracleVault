@@ -169,6 +169,27 @@ void main() {
     expect(await db.edgeDao.isTranslation('t1'), isTrue);
   });
 
+  test('watchBacklinksToTable: Links auf Tabelle UND ihre Einträge', () async {
+    // t2 „Monster" hat den Eintrag „Goblin". Zwei Quellen verlinken:
+    // t1/e1 → auf die Tabelle, t3/e3 → auf den Eintrag.
+    await insertTable('t1', 'Quelle A');
+    await insertTable('t2', 'Monster');
+    await insertTable('t3', 'Quelle B');
+    await insertEntry('goblin', 't2', 0, 'Goblin');
+    await insertEntry('e1', 't1', 0, '[[Monster]]');
+    await insertEntry('e3', 't3', 0, '[[Monster#Goblin]]');
+
+    await svc.materializeForTable('t1');
+    await svc.materializeForTable('t3');
+
+    final backlinks = await db.edgeDao.watchBacklinksToTable('t2').first;
+    expect(backlinks, hasLength(2));
+    expect(backlinks.map((e) => e.fromId).toSet(), {'e1', 'e3'});
+
+    // Fremde Tabelle ohne Links auf t2 → keine Backlinks.
+    expect(await db.edgeDao.watchBacklinksToTable('t1').first, isEmpty);
+  });
+
   test('watchBacklinksTo liefert eingehende Links', () async {
     await insertTable('t1', 'Quelle');
     await insertTable('t2', 'Monster');

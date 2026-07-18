@@ -328,6 +328,9 @@ class _DetailContent extends ConsumerWidget {
                 );
               },
             ),
+
+            // ── Backlinks ────────────────────────────────────────────
+            const _BacklinksSection(),
           ],
         ),
       ),
@@ -339,6 +342,84 @@ class _DetailContent extends ConsumerWidget {
     if (t.genre != null) parts.add(t.genre!);
     parts.add(t.language.toUpperCase());
     return parts.join(' · ');
+  }
+}
+
+// ── Backlinks-Sektion ─────────────────────────────────────────────────────────
+
+/// Zeigt alle Tabellen/Einträge, die per [[Wiki-Link]] hierher verweisen.
+/// Tap auf einen Backlink wählt die Quell-Tabelle aus.
+class _BacklinksSection extends ConsumerWidget {
+  const _BacklinksSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final backlinksAsync = ref.watch(backlinksForSelectedTableProvider);
+    final tertiary = AppTheme.textTertiary(context);
+    final cs = Theme.of(context).colorScheme;
+
+    return backlinksAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (backlinks) {
+        if (backlinks.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: AppTheme.sp12),
+            Divider(height: 1, color: AppTheme.border(context)),
+            const SizedBox(height: AppTheme.sp8),
+            Text('Verweise hierher (${backlinks.length})',
+                style: TextStyle(fontSize: 10, color: tertiary)),
+            const SizedBox(height: AppTheme.sp4),
+            ...backlinks.map((b) => InkWell(
+                  onTap: () => ref
+                      .read(selectedTableIdProvider.notifier)
+                      .state = b.sourceTableId,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          b.isEmbed
+                              ? Icons.image_outlined
+                              : Icons.link,
+                          size: 12,
+                          color: cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: RichText(
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            text: TextSpan(
+                              style: TextStyle(
+                                  fontSize: 11, color: cs.onSurface),
+                              children: [
+                                TextSpan(
+                                  text: b.sourceTableName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w500),
+                                ),
+                                if (b.sourceEntryContent != null)
+                                  TextSpan(
+                                    text: ' · ${b.sourceEntryContent}',
+                                    style: TextStyle(color: tertiary),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )),
+          ],
+        );
+      },
+    );
   }
 }
 

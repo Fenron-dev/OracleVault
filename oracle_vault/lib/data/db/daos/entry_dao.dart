@@ -32,6 +32,10 @@ class EntryDao extends DatabaseAccessor<VaultDatabase> with _$EntryDaoMixin {
             ..orderBy([(e) => OrderingTerm.asc(e.position)]))
           .get();
 
+  /// Ein Eintrag per ID (für Backlink-Auflösung).
+  Future<Entry?> fetchById(String id) =>
+      (select(entries)..where((e) => e.id.equals(id))).getSingleOrNull();
+
   /// Erster Eintrag einer Tabelle mit passendem [content] (case-insensitiv) —
   /// für Wiki-Link-Auflösung von `[[Table#Entry]]`. Null wenn keiner passt.
   Future<Entry?> fetchByContent(String tableId, String content) =>

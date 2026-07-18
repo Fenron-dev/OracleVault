@@ -85,6 +85,27 @@ enum SidebarSection { categories, tags, sources, smartFilters }
 /// Ansichtsmodus des mittleren Panels.
 enum LibraryViewMode { list, grid }
 
+/// Ein aufgelöster Backlink für das Detail-Panel:
+/// „[sourceTableName] (→ [sourceEntryContent]) verweist hierher."
+class Backlink {
+  final String sourceTableId;
+  final String sourceTableName;
+
+  /// Content des verweisenden Eintrags — null wenn der Link in der
+  /// Tabellen-Beschreibung steht.
+  final String? sourceEntryContent;
+
+  /// True bei ![[Embed]]-Links.
+  final bool isEmbed;
+
+  const Backlink({
+    required this.sourceTableId,
+    required this.sourceTableName,
+    this.sourceEntryContent,
+    this.isEmbed = false,
+  });
+}
+
 /// Ergebnis eines Test-Wurfs im Detail-Panel.
 class TestRollResult {
   final String content;

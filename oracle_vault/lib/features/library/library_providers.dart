@@ -238,6 +238,56 @@ final selectedTableProvider = StreamProvider<OracleTable?>((ref) {
   return dao.watchById(selectedId);
 });
 
+/// Backlinks der ausgewählten Tabelle: alle Wiki-Link-/Embed-Edges, die auf
+/// die Tabelle oder einen ihrer Einträge zeigen — aufgelöst zu Quell-Tabelle
+/// (+ ggf. Quell-Eintrag). Selbstverweise (Quelle = diese Tabelle) werden
+/// ausgeblendet; pro Quelle erscheint nur ein Backlink.
+final backlinksForSelectedTableProvider =
+    StreamProvider<List<Backlink>>((ref) {
+  final db = ref.watch(vaultDbProvider);
+  final selectedId = ref.watch(selectedTableIdProvider);
+  if (db == null || selectedId == null) return const Stream.empty();
+
+  return db.edgeDao.watchBacklinksToTable(selectedId).asyncMap((edges) async {
+    final result = <Backlink>[];
+    final seen = <String>{}; // sourceTableId:sourceEntryId
+
+    for (final edge in edges) {
+      String sourceTableId;
+      String? entryContent;
+
+      if (edge.fromType == 'entry') {
+        final entry = await db.entryDao.fetchById(edge.fromId);
+        if (entry == null) continue; // verwaiste Edge
+        sourceTableId = entry.tableId;
+        entryContent = entry.content;
+      } else if (edge.fromType == 'table') {
+        sourceTableId = edge.fromId;
+      } else {
+        continue; // andere Quelltypen (künftig) hier nicht anzeigen
+      }
+
+      if (sourceTableId == selectedId) continue; // Selbstverweis
+      if (!seen.add('$sourceTableId:${edge.fromId}')) continue;
+
+      final sourceTable = await db.tableDao.fetchById(sourceTableId);
+      if (sourceTable == null) continue;
+
+      result.add(Backlink(
+        sourceTableId: sourceTableId,
+        sourceTableName: sourceTable.name,
+        sourceEntryContent: entryContent,
+        isEmbed: edge.relation == 'embed',
+      ));
+    }
+
+    result.sort((a, b) => a.sourceTableName
+        .toLowerCase()
+        .compareTo(b.sourceTableName.toLowerCase()));
+    return result;
+  });
+});
+
 /// Alle Sprachvarianten der ausgewählten Tabelle (Original + Übersetzungen).
 /// Gibt eine geordnete Liste zurück: erstes Element ist immer das Original.
 /// Leere Liste = keine Übersetzungen vorhanden → kein Switcher nötig.

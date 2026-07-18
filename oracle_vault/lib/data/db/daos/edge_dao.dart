@@ -10,13 +10,14 @@ import 'package:uuid/uuid.dart';
 
 import '../vault_database.dart';
 import '../tables/edges.dart';
+import '../tables/entries.dart';
 import '../tables/oracle_tables.dart';
 
 part 'edge_dao.g.dart';
 
 const _uuid = Uuid();
 
-@DriftAccessor(tables: [Edges, OracleTables])
+@DriftAccessor(tables: [Edges, OracleTables, Entries])
 class EdgeDao extends DatabaseAccessor<VaultDatabase> with _$EdgeDaoMixin {
   EdgeDao(super.db);
 
@@ -91,6 +92,23 @@ class EdgeDao extends DatabaseAccessor<VaultDatabase> with _$EdgeDaoMixin {
                 e.toId.equals(toId) &
                 e.relation.isIn(const ['wikilink', 'embed'])))
           .watch();
+
+  /// Alle Wiki-Link-/Embed-Edges, die auf [tableId] ODER einen seiner
+  /// Einträge zeigen — die vollständige Backlink-Menge einer Tabelle
+  /// (eine Query, siehe edges.dart-Konzept).
+  Stream<List<Edge>> watchBacklinksToTable(String tableId) {
+    final entryIds = selectOnly(entries)
+      ..addColumns([entries.id])
+      ..where(entries.tableId.equals(tableId));
+
+    return (select(edges)
+          ..where((e) =>
+              e.relation.isIn(const ['wikilink', 'embed']) &
+              ((e.toType.equals('table') & e.toId.equals(tableId)) |
+                  (e.toType.equals('entry') &
+                      e.toId.isInQuery(entryIds)))))
+        .watch();
+  }
 
   /// Alle ausgehenden Wiki-Link-/Embed-Edges von [fromType]/[fromId].
   Future<List<Edge>> fetchOutgoingLinks(String fromType, String fromId) =>
