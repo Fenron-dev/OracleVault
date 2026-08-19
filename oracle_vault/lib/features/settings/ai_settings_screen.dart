@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/theme.dart';
 import '../../services/llm/llm_profile.dart';
+import '../../services/llm/api_key_store.dart';
 import '../../services/llm/llm_profiles_store.dart';
 import '../../services/llm/llm_service.dart';
 
@@ -56,6 +57,41 @@ class AiSettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
+
+          // ── Hinweis: Keys liegen im Klartext ──────────────────────────
+          // Nur wenn der Keychain-Zugriff fehlschlägt (ad-hoc signierter
+          // Build, siehe Issue #8). Sichtbar machen statt stillschweigend
+          // Klartext schreiben.
+          if (state.keyBackend == ApiKeyBackend.plainPreferences &&
+              state.profiles.any((p) => p.hasApiKey)) ...[
+            const Gap(AppTheme.sp12),
+            Container(
+              padding: const EdgeInsets.all(AppTheme.sp12),
+              decoration: BoxDecoration(
+                color: cs.errorContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lock_open_outlined,
+                      size: 16, color: cs.onErrorContainer),
+                  const Gap(AppTheme.sp8),
+                  Expanded(
+                    child: Text(
+                      'API-Keys liegen unverschlüsselt in den '
+                      'App-Preferences: der Keychain verweigert den Zugriff, '
+                      'weil dieser Build nicht mit einem echten Zertifikat '
+                      'signiert ist. Mit signiertem Build ziehen sie beim '
+                      'nächsten Start automatisch dorthin um.',
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onErrorContainer),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const Gap(AppTheme.sp16),
           Divider(color: borderColor),

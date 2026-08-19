@@ -1,8 +1,9 @@
 // Datei: lib/services/llm/llm_profiles_store.dart
 //
 // ZWECK: Persistenz für LLM-Profile und Aufgaben-Zuweisungen.
-//        Profile-Metadaten → SharedPreferences (kein Sicherheitsproblem).
-//        API-Keys → flutter_secure_storage (Keychain/Keystore).
+//        Profile-Metadaten → SharedPreferences (kein Sicherheitsproblem;
+//        LlmProfile speichert vom Key nur das Flag has_api_key).
+//        API-Keys → ApiKeyStore (Keychain/Keystore, Fallback siehe dort).
 // PHASE: 3
 
 import 'dart:convert';
@@ -11,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+import 'api_key_store.dart';
 import 'llm_profile.dart';
 
 const _uuid = Uuid();
@@ -29,11 +31,16 @@ class LlmProfilesState {
   final LlmTaskAssignment taskAssignment;
   final bool aiEnabled;
 
+  /// Wo die API-Keys liegen (null = noch nicht ermittelt). Die AI-Einstellungen
+  /// zeigen es an, damit ein Klartext-Fallback nicht unbemerkt bleibt.
+  final ApiKeyBackend? keyBackend;
+
   const LlmProfilesState({
     this.profiles = const [],
     this.defaultProfileId,
     this.taskAssignment = const LlmTaskAssignment(),
     this.aiEnabled = true,
+    this.keyBackend,
   });
 
   /// Gibt das Profil für eine Aufgabe zurück (oder das Default-Profil).
@@ -61,12 +68,14 @@ class LlmProfilesState {
     String? defaultProfileId,
     LlmTaskAssignment? taskAssignment,
     bool? aiEnabled,
+    ApiKeyBackend? keyBackend,
   }) =>
       LlmProfilesState(
         profiles: profiles ?? this.profiles,
         defaultProfileId: defaultProfileId ?? this.defaultProfileId,
         taskAssignment: taskAssignment ?? this.taskAssignment,
         aiEnabled: aiEnabled ?? this.aiEnabled,
+        keyBackend: keyBackend ?? this.keyBackend,
       );
 }
 
@@ -80,12 +89,11 @@ class LlmProfilesNotifier extends Notifier<LlmProfilesState> {
   static const String _kTask = 'llm_task_assignment';
   static const String _kAiEnabled = 'llm_ai_enabled';
 
-  // API-Keys werden in SharedPreferences gespeichert (kein Keychain).
-  // Grund: flutter_secure_storage benötigt auf macOS ein gültiges Code-Signing-
-  // Identity — ad-hoc-signierte Debug-Builds schlagen mit -34018 fehl.
-  // SharedPreferences liegt in ~/Library/Preferences/ und ist nur für den
-  // eingeloggten User zugänglich; für ein lokales Entwicklungs-Tool ausreichend.
-  static String _apiKeyPref(String profileId) => '_llm_apikey_$profileId';
+  /// Zugriff auf die Keys — entscheidet selbst zwischen Keychain und
+  /// Klartext-Fallback und migriert Altbestände.
+  final ApiKeyStore _keys = ApiKeyStore();
+
+
 
   @override
   LlmProfilesState build() {
@@ -122,6 +130,13 @@ class LlmProfilesNotifier extends Notifier<LlmProfilesState> {
       taskAssignment: taskAssignment,
       aiEnabled: aiEnabled,
     );
+
+    // Sobald der Keychain verfügbar ist (echtes Code-Signing), wandern beim
+    // ersten Start alle Klartext-Keys dorthin und verschwinden aus den
+    // Preferences. Vorher passiert hier nichts.
+    final backend = await _keys.backend();
+    await _keys.migratePlaintextKeys(profiles.map((p) => p.id));
+    state = state.copyWith(keyBackend: backend);
   }
 
   Future<void> _persist() async {
@@ -165,8 +180,7 @@ class LlmProfilesNotifier extends Notifier<LlmProfilesState> {
     final newDefault =
         state.defaultProfileId == id ? null : state.defaultProfileId;
     state = state.copyWith(profiles: updated, defaultProfileId: newDefault);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_apiKeyPref(id));
+    await _keys.delete(id);
     await _persist();
   }
 
@@ -180,24 +194,18 @@ class LlmProfilesNotifier extends Notifier<LlmProfilesState> {
     await _persist();
   }
 
-  // ── API-Key (SharedPreferences) ────────────────────────────────────────────
+  // ── API-Key ────────────────────────────────────────────────────────────────
 
   Future<void> saveApiKey(String profileId, String key) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_apiKeyPref(profileId), key);
+    await _keys.save(profileId, key);
     final profile = state.profiles.firstWhere((p) => p.id == profileId);
     await updateProfile(profile.copyWith(hasApiKey: true));
   }
 
-  Future<String?> loadApiKey(String profileId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString(_apiKeyPref(profileId));
-    return (key == null || key.isEmpty) ? null : key;
-  }
+  Future<String?> loadApiKey(String profileId) => _keys.load(profileId);
 
   Future<void> deleteApiKey(String profileId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_apiKeyPref(profileId));
+    await _keys.delete(profileId);
     final profile = state.profiles.firstWhere((p) => p.id == profileId);
     await updateProfile(profile.copyWith(hasApiKey: false));
   }
