@@ -23,6 +23,7 @@ import '../../features/library/library_providers.dart';
 import '../../services/llm/llm_profiles_store.dart';
 import '../../services/llm/llm_service.dart';
 import '../../services/llm/llm_tasks.dart';
+import '../../services/wikilink_service.dart';
 import 'adapters/csv_adapter.dart';
 import 'adapters/epub_adapter.dart';
 import 'adapters/image_adapter.dart';
@@ -235,6 +236,13 @@ class ImportController extends Notifier<ImportScreenState> {
         await db.tableDao.setTagsFor(tableId, tagIds);
       }
 
+      // ── Save-Hook ───────────────────────────────────────────────────
+      // Derselbe Hook wie beim manuellen Speichern: [[Links]] aus
+      // Beschreibung und Eintragstexten als Edges materialisieren. Fehlt er,
+      // haben importierte und KI-generierte Tabellen keine Backlinks und
+      // fehlen im Graph — bis jemand sie zufällig einmal von Hand speichert.
+      await WikiLinkService(db: db).materializeForTable(tableId);
+
       // Selektion auf neue Tabelle setzen.
       ref.read(selectedTableIdProvider.notifier).state = tableId;
 
@@ -361,6 +369,12 @@ class ImportController extends Notifier<ImportScreenState> {
         tableIds.add(tableId);
         saved++;
       } catch (_) {}
+    }
+
+    // Save-Hook, bewusst NACH der Schleife: Links zwischen den Tabellen
+    // desselben Imports lassen sich erst auflösen, wenn alle Ziele existieren.
+    for (final id in tableIds) {
+      await WikiLinkService(db: db).materializeForTable(id);
     }
 
     // Alle importierten Tabellen als Collection verknüpfen.
