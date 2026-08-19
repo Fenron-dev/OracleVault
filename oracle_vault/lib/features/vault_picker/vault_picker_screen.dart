@@ -67,6 +67,11 @@ class _VaultPickerScreenState extends ConsumerState<VaultPickerScreen> {
       final config = await VaultManager.readConfig(path);
       final name = config['name'] as String? ?? 'Vault';
       await RecentVaultsStore.touch(path, name);
+      // Nicht-kritische Hinweise aus dem Öffnen (z. B. gescheitertes
+      // Tages-Backup) zeigt die Library — dieser Screen ist gleich weg.
+      if (opened.warning != null) {
+        ref.read(vaultNoticeProvider.notifier).state = opened.warning;
+      }
       ref.read(activeVaultProvider.notifier).state = opened;
       ref.invalidate(recentVaultsProvider);
     } on VaultNotFoundException {

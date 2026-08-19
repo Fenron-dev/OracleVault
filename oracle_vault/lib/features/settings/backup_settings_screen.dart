@@ -14,7 +14,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/di.dart';
 import '../../core/theme.dart';
-import '../../data/vault/vault_manager.dart';
 import '../../services/backup_service.dart';
 
 /// Backup-Einträge als Riverpod-Provider.
@@ -173,7 +172,7 @@ class _BackupSettingsScreenState
                 children: backups
                     .map((b) => _BackupTile(
                           entry: b,
-                          onRestore: () => _confirmRestore(context, vault, b),
+                          onRestore: () => _confirmRestore(context, b),
                         ))
                     .toList(),
               );
@@ -185,7 +184,7 @@ class _BackupSettingsScreenState
   }
 
   Future<void> _confirmRestore(
-      BuildContext context, OpenedVault vault, BackupEntry entry) async {
+      BuildContext context, BackupEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -193,7 +192,9 @@ class _BackupSettingsScreenState
         content: Text(
           'Alle aktuellen Daten werden durch das Backup\n'
           '"${entry.filename}" ersetzt.\n\n'
-          'Diese Aktion kann nicht rückgängig gemacht werden.',
+          'Der bisherige Stand wird vorher als "pre-restore-…" im '
+          'Backups-Ordner gesichert. Der Vault wird dafür kurz geschlossen '
+          'und danach neu geöffnet.',
         ),
         actions: [
           TextButton(
@@ -211,8 +212,20 @@ class _BackupSettingsScreenState
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _runAction(() =>
-        BackupService.restoreFromDbSnapshot(vault.vaultPath, entry.path));
+
+    // Der Restore läuft im VaultSession-Provider, nicht hier: er koppelt den
+    // Vault ab, wodurch der Router zum Picker springt und diesen Screen
+    // abräumt. Die Erfolgsmeldung landet deshalb im vaultNotice, den die
+    // Library anzeigt.
+    final session = ref.read(vaultSessionProvider);
+    final notice = ref.read(vaultNoticeProvider.notifier);
+    await _runAction(() async {
+      final result = await session.restoreSnapshot(entry.path);
+      notice.state = result.success
+          ? 'Backup „${entry.filename}" wiederhergestellt.'
+          : result.error;
+      return result;
+    });
   }
 }
 
@@ -265,6 +278,7 @@ class _BackupTile extends StatelessWidget {
 
   IconData _typeIcon(BackupType type) => switch (type) {
         BackupType.preMigration => Icons.update,
+        BackupType.preRestore => Icons.history,
         BackupType.auto => Icons.schedule,
         BackupType.manual => Icons.save,
         BackupType.jsonExport => Icons.data_object,

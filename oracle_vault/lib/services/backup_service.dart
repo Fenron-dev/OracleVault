@@ -19,6 +19,7 @@ import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 import '../data/db/vault_database.dart';
 import '../data/vault/vault_manager.dart';
@@ -54,27 +55,45 @@ class BackupEntry {
   String get filename => p.basename(path);
 }
 
-enum BackupType { preMigration, auto, manual, jsonExport }
+enum BackupType { preMigration, preRestore, auto, manual, jsonExport }
 
 /// Backup- und Restore-Service für einen Vault.
 abstract class BackupService {
   // ── Pre-Migration-Snapshot ─────────────────────────────────────────────────
 
-  /// Erstellt einen SQLite-DB-Snapshot vor einem Schema-Upgrade.
+  /// Zieht einen Snapshot, WENN die vorhandene index.db eine ältere
+  /// Schema-Version hat als [targetSchemaVersion] — also unmittelbar bevor
+  /// Drifts onUpgrade laufen wird.
   ///
-  /// Wird von vault_database.dart VOR dem onUpgrade-Aufruf aufgerufen.
-  /// Einfaches Kopieren der index.db — SQLite-Datei ist in WAL-Modus konsistent.
-  static Future<BackupResult> createPreMigrationSnapshot(
-      String vaultPath) async {
-    final ts = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now());
-    final dest = p.join(
-        VaultManager.backupsDir(vaultPath), 'pre-migration-$ts.db');
+  /// WARUM HIER UND NICHT IN onUpgrade?
+  /// Der Snapshot nutzt `VACUUM INTO`, und VACUUM kann nicht innerhalb einer
+  /// Transaktion laufen. Drift führt onUpgrade aber in einer Transaktion aus.
+  /// Deshalb prüft [VaultManager.open] die `user_version` der Datei, bevor
+  /// überhaupt eine Drift-Verbindung aufgebaut wird.
+  ///
+  /// Gibt null zurück, wenn kein Upgrade ansteht (Normalfall) — der Aufrufer
+  /// muss dann nichts melden.
+  static Future<BackupResult?> createPreMigrationSnapshotIfNeeded(
+    String vaultPath,
+    int targetSchemaVersion,
+  ) async {
+    final dbFile = VaultManager.dbPath(vaultPath);
+    if (!File(dbFile).existsSync()) return null;
+
+    final int current;
     try {
-      await File(VaultManager.dbPath(vaultPath)).copy(dest);
-      return BackupResult.ok(dest);
+      current = _readUserVersion(dbFile);
     } catch (e) {
-      return BackupResult.err('Pre-Migration-Snapshot fehlgeschlagen: $e');
+      return BackupResult.err('Schema-Version nicht lesbar: $e');
     }
+
+    // user_version == 0 → frisch angelegte, noch leere Datei (onCreate folgt).
+    if (current == 0 || current >= targetSchemaVersion) return null;
+
+    final ts = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now());
+    final dest = p.join(VaultManager.backupsDir(vaultPath),
+        'pre-migration-v$current-$ts.db');
+    return _snapshot(dbFile, dest, 'Pre-Migration-Snapshot');
   }
 
   // ── Auto-Backup ────────────────────────────────────────────────────────────
@@ -90,13 +109,15 @@ abstract class BackupService {
     final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final dest =
         p.join(VaultManager.backupsDir(vaultPath), 'auto-$date.db');
+    final result =
+        await _snapshot(VaultManager.dbPath(vaultPath), dest, 'Auto-Backup');
+    if (!result.success) return result;
     try {
-      await File(VaultManager.dbPath(vaultPath)).copy(dest);
       await _pruneAutoBackups(vaultPath, keepCount);
-      return BackupResult.ok(dest);
     } catch (e) {
-      return BackupResult.err('Auto-Backup fehlgeschlagen: $e');
+      return BackupResult.err('Aufräumen alter Backups fehlgeschlagen: $e');
     }
+    return result;
   }
 
   /// Prüft ob heute bereits ein Auto-Backup erstellt wurde.
@@ -121,6 +142,8 @@ abstract class BackupService {
     final vaultName = p.basename(vaultPath);
     final destFile = p.join(destDir, 'oraclevault-$vaultName-$ts.zip');
     try {
+      // WAL zurückschreiben, sonst archiviert das ZIP eine veraltete index.db.
+      await _checkpointWal(VaultManager.dbPath(vaultPath));
       final encoder = ZipFileEncoder();
       encoder.create(destFile);
       // .oraclevault/ ohne thumbnails/
@@ -180,16 +203,77 @@ abstract class BackupService {
   /// Stellt einen Vault aus einem DB-Snapshot wieder her.
   ///
   /// Schließt [db] NICHT — der Aufrufer muss die Datenbankverbindung vorher
-  /// schließen und danach neu öffnen.
+  /// schließen und den Vault danach neu öffnen.
+  ///
+  /// WARUM MEHR ALS EIN File.copy?
+  /// Neben index.db liegen im WAL-Modus index.db-wal und index.db-shm. Bleiben
+  /// die stehen, spielt SQLite beim nächsten Öffnen das alte WAL auf die frisch
+  /// kopierte Datei — die Wiederherstellung verpufft und die Datei wird obendrein
+  /// beschädigt, weil WAL und Hauptdatei aus verschiedenen Datenbanken stammen.
+  /// Deshalb: erst prüfen, dann sichern, dann Seitendateien löschen, dann kopieren.
   static Future<BackupResult> restoreFromDbSnapshot(
     String vaultPath,
     String snapshotPath,
   ) async {
+    final target = VaultManager.dbPath(vaultPath);
+
+    if (!File(snapshotPath).existsSync()) {
+      return BackupResult.err('Restore fehlgeschlagen: $snapshotPath fehlt');
+    }
+
+    // ── 1. Snapshot prüfen ──────────────────────────────────────────────────
+    // Lieber hier abbrechen als eine funktionierende index.db durch eine
+    // kaputte Datei zu ersetzen.
     try {
-      await File(snapshotPath).copy(VaultManager.dbPath(vaultPath));
-      return BackupResult.ok(VaultManager.dbPath(vaultPath));
+      final check = _inspectSnapshot(snapshotPath);
+      if (check != null) return BackupResult.err('Restore abgebrochen: $check');
+    } catch (e) {
+      return BackupResult.err('Restore abgebrochen: Snapshot unlesbar ($e)');
+    }
+
+    // ── 2. Aktuellen Stand sichern ──────────────────────────────────────────
+    // Der Dialog sagt „kann nicht rückgängig gemacht werden" — stimmt für die
+    // UI, aber die Datei soll trotzdem nicht einfach verschwinden.
+    if (File(target).existsSync()) {
+      final ts = DateFormat('yyyy-MM-dd_HH-mm-ss').format(DateTime.now());
+      final safety =
+          p.join(VaultManager.backupsDir(vaultPath), 'pre-restore-$ts.db');
+      final saved = await _snapshot(target, safety, 'Sicherung vor Restore');
+      if (!saved.success) return saved;
+    }
+
+    // ── 3. Ersetzen ─────────────────────────────────────────────────────────
+    try {
+      for (final suffix in ['', '-wal', '-shm']) {
+        final f = File('$target$suffix');
+        if (f.existsSync()) await f.delete();
+      }
+      await File(snapshotPath).copy(target);
+      return BackupResult.ok(target);
     } catch (e) {
       return BackupResult.err('Restore fehlgeschlagen: $e');
+    }
+  }
+
+  /// Prüft einen Snapshot vor dem Zurückspielen.
+  /// Gibt null zurück, wenn alles in Ordnung ist, sonst den Grund.
+  static String? _inspectSnapshot(String snapshotPath) {
+    final db = sqlite3.open(snapshotPath, mode: OpenMode.readOnly);
+    try {
+      final integrity =
+          db.select('PRAGMA quick_check').first.values.first as String?;
+      if (integrity != 'ok') return 'Snapshot ist beschädigt ($integrity)';
+
+      final version = db.select('PRAGMA user_version').first.values.first as int?;
+      if (version != null && version > VaultDatabase.kSchemaVersion) {
+        // Rückwärts-Migration gibt es nicht — eine neuere Datei würde die App
+        // beim nächsten Start mit unklaren Fehlern begrüßen.
+        return 'Snapshot stammt aus einer neueren App-Version '
+            '(Schema v$version > v${VaultDatabase.kSchemaVersion})';
+      }
+      return null;
+    } finally {
+      db.dispose();
     }
   }
 
@@ -206,6 +290,8 @@ abstract class BackupService {
       BackupType? type;
       if (name.startsWith('pre-migration-')) {
         type = BackupType.preMigration;
+      } else if (name.startsWith('pre-restore-')) {
+        type = BackupType.preRestore;
       } else if (name.startsWith('auto-')) {
         type = BackupType.auto;
       } else if (name.startsWith('manual-')) {
@@ -225,6 +311,72 @@ abstract class BackupService {
   }
 
   // ── Interne Helfer ────────────────────────────────────────────────────────
+
+  /// Konsistenter Datei-Snapshot einer SQLite-DB via `VACUUM INTO`.
+  ///
+  /// WARUM NICHT File.copy?
+  /// Die DB läuft im WAL-Modus. Frisch committete Transaktionen stehen dann in
+  /// index.db-wal, NICHT in index.db — eine reine Dateikopie kann beliebig alt
+  /// sein. `VACUUM INTO` schreibt dagegen den aktuellen Zustand inklusive WAL
+  /// in eine einzelne, defragmentierte Zieldatei.
+  ///
+  /// Läuft über package:sqlite3 statt über Drift, weil VACUUM nicht innerhalb
+  /// einer Transaktion ausgeführt werden darf.
+  static Future<BackupResult> _snapshot(
+    String dbPath,
+    String destPath,
+    String label,
+  ) async {
+    if (!File(dbPath).existsSync()) {
+      return BackupResult.err('$label fehlgeschlagen: $dbPath existiert nicht');
+    }
+    try {
+      await Directory(p.dirname(destPath)).create(recursive: true);
+      // VACUUM INTO bricht ab, wenn das Ziel schon existiert (z. B. zweites
+      // Auto-Backup am selben Tag) — deshalb vorher entfernen.
+      final destFile = File(destPath);
+      if (destFile.existsSync()) await destFile.delete();
+
+      final db = sqlite3.open(dbPath);
+      try {
+        db.execute('VACUUM INTO ?', [destPath]);
+      } finally {
+        db.dispose();
+      }
+      return BackupResult.ok(destPath);
+    } catch (e) {
+      return BackupResult.err('$label fehlgeschlagen: $e');
+    }
+  }
+
+  /// Liest `PRAGMA user_version` — Drift speichert dort die schemaVersion.
+  /// 0 = Datei noch ohne Schema.
+  static int _readUserVersion(String dbPath) {
+    final db = sqlite3.open(dbPath);
+    try {
+      final row = db.select('PRAGMA user_version').first;
+      return row.values.first as int? ?? 0;
+    } finally {
+      db.dispose();
+    }
+  }
+
+  /// Schreibt offene WAL-Transaktionen zurück in die Hauptdatei, damit ein
+  /// dateibasiertes Backup (ZIP) den aktuellen Stand enthält.
+  static Future<void> _checkpointWal(String dbPath) async {
+    if (!File(dbPath).existsSync()) return;
+    try {
+      final db = sqlite3.open(dbPath);
+      try {
+        db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+      } finally {
+        db.dispose();
+      }
+    } catch (_) {
+      // Checkpoint ist eine Optimierung — schlägt er fehl (z. B. weil eine
+      // andere Verbindung schreibt), wird trotzdem archiviert.
+    }
+  }
 
   static Future<void> _pruneAutoBackups(
       String vaultPath, int keepCount) async {

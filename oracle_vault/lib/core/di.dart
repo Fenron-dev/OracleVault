@@ -13,6 +13,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/vault/vault_manager.dart';
+import '../services/backup_service.dart';
 import '../services/media/media_service.dart';
 import '../services/media/thumbnail_service.dart';
 
@@ -22,6 +23,58 @@ import '../services/media/thumbnail_service.dart';
 /// Gesetzt von vaultPickerProvider.notifier.openVault() und createVault().
 final activeVaultProvider =
     StateProvider<OpenedVault?>((ref) => null);
+
+/// Einmalige Meldung zum offenen Vault, die die Library beim nächsten Aufbau
+/// als SnackBar zeigt und danach löscht.
+///
+/// WOFÜR? Manches passiert, während gerade kein Screen da ist, der es anzeigen
+/// könnte: das Tages-Backup läuft beim Öffnen (der Picker verschwindet sofort
+/// danach), und ein Restore tauscht den Vault aus, wobei der auslösende
+/// Backup-Screen abgeräumt wird.
+final vaultNoticeProvider = StateProvider<String?>((ref) => null);
+
+/// Lebenszyklus des offenen Vaults.
+///
+/// Liegt bewusst im Provider-Container und nicht in einem Widget: ein Restore
+/// überlebt den Screen, von dem er gestartet wurde (das Abkoppeln des Vaults
+/// schickt den Router zurück zum Picker, wodurch der Screen verschwindet).
+class VaultSession {
+  final Ref _ref;
+  VaultSession(this._ref);
+
+  /// Spielt einen DB-Snapshot ein und hängt den Vault danach neu ein.
+  ///
+  /// Die offene Verbindung muss dafür geschlossen werden: sie hält Handles auf
+  /// index.db und deren WAL und würde beim Schließen über die gerade
+  /// eingespielte Datei schreiben. Zuerst wird abgekoppelt, damit die Library
+  /// nicht noch auf die schließende Verbindung zugreift.
+  Future<BackupResult> restoreSnapshot(String snapshotPath) async {
+    final vault = _ref.read(activeVaultProvider);
+    if (vault == null) return const BackupResult.err('Kein Vault geöffnet');
+    final vaultPath = vault.vaultPath;
+
+    _ref.read(activeVaultProvider.notifier).state = null;
+    await vault.database.close();
+
+    final result =
+        await BackupService.restoreFromDbSnapshot(vaultPath, snapshotPath);
+
+    // Auch nach einem Fehlschlag wieder öffnen: bricht die Prüfung ab, bleibt
+    // die alte index.db unangetastet — der Nutzer soll nicht ausgesperrt sein.
+    try {
+      final reopened = await VaultManager.open(vaultPath);
+      _ref.read(activeVaultProvider.notifier).state = reopened;
+    } catch (e) {
+      // activeVaultProvider bleibt null → Router zeigt den Vault-Picker.
+      return BackupResult.err(
+          '${result.success ? "Backup eingespielt, aber der" : "${result.error} — der"}'
+          ' Vault ließ sich nicht neu öffnen: $e');
+    }
+    return result;
+  }
+}
+
+final vaultSessionProvider = Provider<VaultSession>(VaultSession.new);
 
 /// Theme-Modus als String: 'system' | 'light' | 'dark'.
 /// Phase 1: wird aus config.json des Vaults gelesen.
