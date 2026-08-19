@@ -274,10 +274,20 @@ class _TableRowState extends ConsumerState<_TableRow> {
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return;
+    if (confirmed != true || !mounted) return;
     final db = ref.read(vaultDbProvider);
     if (db == null) return;
-    await db.tableDao.deleteTable(widget.table.id);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await db.tableDao.deleteTable(widget.table.id);
+    } catch (e) {
+      // Ohne diesen Zweig scheitert das Löschen lautlos und die Tabelle
+      // bleibt einfach stehen — der Nutzer bekommt nichts mit.
+      messenger.showSnackBar(
+        SnackBar(content: Text('Löschen fehlgeschlagen: $e')),
+      );
+      return;
+    }
     if (ref.read(selectedTableIdProvider) == widget.table.id) {
       ref.read(selectedTableIdProvider.notifier).state = null;
     }
@@ -842,10 +852,19 @@ class _BulkDeleteDialog extends ConsumerWidget {
     Future<void> delete() async {
       final db = ref.read(vaultDbProvider);
       if (db == null) return;
-      await db.tableDao.bulkDelete(selectedIds.toList());
+      final messenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+      try {
+        await db.tableDao.bulkDelete(selectedIds.toList());
+      } catch (e) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Löschen fehlgeschlagen: $e')),
+        );
+        return;
+      }
       ref.read(selectedTableIdsProvider.notifier).state = const {};
       ref.read(selectedTableIdProvider.notifier).state = null;
-      if (context.mounted) Navigator.pop(context);
+      navigator.pop();
     }
 
     return AlertDialog(
