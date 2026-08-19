@@ -33,6 +33,8 @@ import '../../data/db/daos/entry_dao.dart';
 import '../../data/db/daos/tag_dao.dart';
 import '../../data/db/daos/category_dao.dart';
 import '../../data/db/daos/source_dao.dart';
+import '../../domain/roll_engine/roll_engine.dart';
+import '../../services/deck_state_service.dart';
 import 'library_state.dart';
 
 // ── Datenbank-Zugriff ─────────────────────────────────────────────────────────
@@ -164,6 +166,17 @@ final tableListProvider = StreamProvider<List<OracleTable>>((ref) {
     collectionId: filter.collectionId,
     searchQuery: filter.searchQuery,
   );
+});
+
+/// Gespeicherter Deck-Zustand einer Tabelle (null = noch nie gemischt).
+///
+/// Nach jedem Ziehen und nach „neu mischen" invalidieren — die Restanzeige im
+/// Detail-Panel hängt daran.
+final deckStateProvider =
+    FutureProvider.family<DeckState?, String>((ref, tableId) async {
+  final db = ref.watch(vaultDbProvider);
+  if (db == null) return null;
+  return DeckStateService(db: db).load(tableId);
 });
 
 /// Einträge der ausgewählten Tabelle.
