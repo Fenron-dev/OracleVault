@@ -28,6 +28,7 @@ import 'package:path/path.dart' as p;
 
 import '../../services/backup_service.dart';
 import '../db/vault_database.dart';
+import 'vault_recovery.dart';
 
 /// Ergebnis von [VaultManager.open] und [VaultManager.create].
 class OpenedVault {
@@ -94,6 +95,12 @@ abstract class VaultManager {
     }
     await _ensureSubdirs(vaultPath);
 
+    // ── Zustand der Datei prüfen ────────────────────────────────────────────
+    // Muss ganz am Anfang stehen: alles Weitere (Snapshot, Migration) setzt
+    // eine lesbare index.db voraus. Wirft, wenn die Datei beschädigt ist —
+    // dann wird der Vault nicht geöffnet.
+    final recoveryNotice = await VaultRecovery.prepare(vaultPath);
+
     // ── Pre-Migration-Snapshot ───────────────────────────────────────────────
     // Muss VOR dem Öffnen laufen: sobald Drift die Verbindung aufbaut, migriert
     // es, und der Snapshot nutzt VACUUM INTO — das geht nicht innerhalb einer
@@ -116,21 +123,27 @@ abstract class VaultManager {
 
     // ── Tages-Backup ────────────────────────────────────────────────────────
     // Nicht kritisch: schlägt es fehl, ist der Vault trotzdem benutzbar.
-    String? warning;
+    String? warning = recoveryNotice;
     try {
       if (!await BackupService.autoBackupExistsForToday(vaultPath)) {
         final config = await readConfig(vaultPath);
         final keep = (config['backupKeepCount'] as num?)?.toInt() ?? 7;
         final result =
             await BackupService.createAutoBackup(vaultPath, keepCount: keep);
-        if (!result.success) warning = result.error;
+        if (!result.success) warning = _join(warning, result.error);
       }
     } catch (e) {
-      warning = 'Tages-Backup fehlgeschlagen: $e';
+      warning = _join(warning, 'Tages-Backup fehlgeschlagen: $e');
     }
 
     return OpenedVault(
         vaultPath: vaultPath, database: db, warning: warning);
+  }
+
+  /// Fügt zwei Hinweise zu einer Meldung zusammen (beide können null sein).
+  static String? _join(String? a, String? b) {
+    final parts = [a, b].whereType<String>().where((s) => s.isNotEmpty);
+    return parts.isEmpty ? null : parts.join(' ');
   }
 
   // ── Vault anlegen ──────────────────────────────────────────────────────────

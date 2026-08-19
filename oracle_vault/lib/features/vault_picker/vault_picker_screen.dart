@@ -24,6 +24,7 @@ import '../../core/di.dart';
 import '../../core/theme.dart';
 import '../../data/vault/recent_vaults_store.dart';
 import '../../data/vault/vault_manager.dart';
+import '../../data/vault/vault_recovery.dart';
 
 /// Riverpod-Provider für die Recent-Vaults-Liste.
 ///
@@ -84,6 +85,12 @@ class _VaultPickerScreenState extends ConsumerState<VaultPickerScreen> {
         }
       }
       setState(() => _error = 'Kein Vault gefunden unter: $path');
+    } on VaultDatabaseUnreadableException catch (e) {
+      // Bringt bereits eine vollständige, umsetzbare Meldung mit (inklusive
+      // Hinweis auf den Backups-Ordner) — kein eigenes Präfix davor.
+      setState(() => _error = '$e');
+    } on VaultMigrationBackupException catch (e) {
+      setState(() => _error = '$e');
     } catch (e) {
       setState(() => _error = 'Fehler beim Öffnen: $e');
     } finally {
