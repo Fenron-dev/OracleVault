@@ -28,42 +28,47 @@ class WikiLinkService {
   /// Materialisiert alle Wiki-Link-Edges für [tableId]:
   /// Tabellen-description (from = table) und alle Einträge (from = entry).
   /// Ersetzt vorhandene wikilink/embed-Edges der jeweiligen Quelle vollständig.
+  ///
+  /// Alles läuft in EINER Transaktion und die Ziel-Auflösung teilt sich einen
+  /// Cache: vorher gab es pro Eintrag eine eigene Transaktion und pro Link
+  /// eine Namensabfrage — bei einer d1000-Tabelle also je tausend.
   Future<void> materializeForTable(String tableId) async {
     final table = await db.tableDao.fetchById(tableId);
     if (table == null) return;
 
+    final resolver = _TargetResolver(db);
+    final newEdges = <EdgesCompanion>[];
+
     // ── Tabellen-Beschreibung ────────────────────────────────────────────────
-    final tableEdges = await _resolveLinks(
+    newEdges.addAll(await _resolveLinks(
+      resolver: resolver,
       fromType: 'table',
       fromId: tableId,
       text: table.description ?? '',
-    );
-    await db.edgeDao.replaceWikiLinkEdges(
-      fromType: 'table',
-      fromId: tableId,
-      newEdges: tableEdges,
-    );
+    ));
 
     // ── Einträge ─────────────────────────────────────────────────────────────
     final entries = await db.entryDao.fetchForTable(tableId);
     for (final entry in entries) {
-      final text = '${entry.content}\n${entry.bodyMd ?? ''}';
-      final entryEdges = await _resolveLinks(
+      newEdges.addAll(await _resolveLinks(
+        resolver: resolver,
         fromType: 'entry',
         fromId: entry.id,
-        text: text,
-      );
-      await db.edgeDao.replaceWikiLinkEdges(
-        fromType: 'entry',
-        fromId: entry.id,
-        newEdges: entryEdges,
-      );
+        text: '${entry.content}\n${entry.bodyMd ?? ''}',
+      ));
     }
+
+    await db.edgeDao.replaceWikiLinkEdgesForTable(
+      tableId: tableId,
+      entryIds: entries.map((e) => e.id).toList(),
+      newEdges: newEdges,
+    );
   }
 
   /// Parst [text] und löst jeden Link gegen die DB auf.
   /// Doppelte Ziele (gleiches to + Relation) werden nur einmal materialisiert.
   Future<List<EdgesCompanion>> _resolveLinks({
+    required _TargetResolver resolver,
     required String fromType,
     required String fromId,
     required String text,
@@ -75,7 +80,7 @@ class WikiLinkService {
     final seen = <String>{}; // "$relation:$toType:$toId"
 
     for (final link in links) {
-      final resolved = await _resolveTarget(link);
+      final resolved = await resolver.resolve(link);
       if (resolved == null) continue;
 
       final key = '${link.isEmbed}:${resolved.$1}:${resolved.$2}';
@@ -92,22 +97,70 @@ class WikiLinkService {
     }
     return result;
   }
+}
+
+/// Löst Link-Ziele auf und merkt sich, was schon nachgeschlagen wurde.
+///
+/// Lebt genau einen materializeForTable-Lauf lang: Tabellen kommen einmal
+/// komplett, Einträge und Medien landen beim ersten Zugriff im Cache. In einer
+/// Tabelle zeigen viele Zeilen auf dieselben Ziele — vorher war das jedes Mal
+/// eine eigene Abfrage.
+class _TargetResolver {
+  final VaultDatabase db;
+  _TargetResolver(this.db);
+
+  Map<String, String>? _tableIdsByName;
+  final Map<String, Map<String, String>> _entryIdsByTable = {};
+  final Map<String, String?> _mediaIdsByTitle = {};
 
   /// Löst das Ziel eines Links auf → (toType, toId) oder null.
-  Future<(String, String)?> _resolveTarget(WikiLink link) async {
+  Future<(String, String)?> resolve(WikiLink link) async {
     if (link.isEmbed) {
-      final media = await db.mediaDao.fetchByTitle(link.target);
-      return media == null ? null : ('media', media.id);
+      final id = await _mediaId(link.target);
+      return id == null ? null : ('media', id);
     }
 
-    final table = await db.tableDao.fetchByName(link.target);
-    if (table == null) return null;
+    final tableId = (await _tableIds())[_key(link.target)];
+    if (tableId == null) return null;
 
     if (link.entry != null) {
-      final entry = await db.entryDao.fetchByContent(table.id, link.entry!);
-      if (entry != null) return ('entry', entry.id);
+      final entryId = (await _entryIds(tableId))[_key(link.entry!)];
       // Eintrag (noch) nicht vorhanden → wenigstens auf die Tabelle zeigen.
+      if (entryId != null) return ('entry', entryId);
     }
-    return ('table', table.id);
+    return ('table', tableId);
+  }
+
+  static String _key(String raw) => raw.toLowerCase().trim();
+
+  /// Bei mehreren Tabellen gleichen Namens gewinnt die älteste — dieselbe
+  /// Regel wie in TableDao.fetchByName. (Rückwärts eingetragen, damit der
+  /// erste Treffer den späteren überschreibt.)
+  Future<Map<String, String>> _tableIds() async {
+    if (_tableIdsByName != null) return _tableIdsByName!;
+    final tables = await db.tableDao.fetchAll()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return _tableIdsByName = {
+      for (final t in tables.reversed) _key(t.name): t.id,
+    };
+  }
+
+  /// Bei gleichem Inhalt gewinnt die kleinste position — dieselbe Regel wie in
+  /// EntryDao.fetchByContent.
+  Future<Map<String, String>> _entryIds(String tableId) async {
+    final cached = _entryIdsByTable[tableId];
+    if (cached != null) return cached;
+    final entries = await db.entryDao.fetchForTable(tableId)
+      ..sort((a, b) => a.position.compareTo(b.position));
+    return _entryIdsByTable[tableId] = {
+      for (final e in entries.reversed) _key(e.content): e.id,
+    };
+  }
+
+  Future<String?> _mediaId(String target) async {
+    final key = _key(target);
+    if (_mediaIdsByTitle.containsKey(key)) return _mediaIdsByTitle[key];
+    final media = await db.mediaDao.fetchByTitle(target);
+    return _mediaIdsByTitle[key] = media?.id;
   }
 }

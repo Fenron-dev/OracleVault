@@ -74,6 +74,98 @@ class TableDao extends DatabaseAccessor<VaultDatabase> with _$TableDaoMixin {
     return query.map((row) => row.readTable(tags)).watch();
   }
 
+  /// Gefilterte Tabellen-Liste — eine einzige SQL-Abfrage.
+  ///
+  /// WARUM ROHES SQL?
+  /// Vorher lud die Library bei jeder Änderung ALLE Tabellen in den Speicher
+  /// und filterte in Dart, plus je eine Zusatzabfrage für Übersetzungen,
+  /// Collection und Suche. Bei ein paar tausend Tabellen war das pro
+  /// Tastendruck ein kompletter Durchlauf durch die Bibliothek. Die
+  /// Suchbedingung (FTS-MATCH als Unterabfrage) lässt sich mit Drifts
+  /// Query-Builder nicht ausdrücken, deshalb der Weg über customSelect.
+  ///
+  /// [searchQuery] leer = keine Suche. [hideTranslations] blendet Tabellen
+  /// aus, die als Übersetzung einer anderen verknüpft sind — sie sind über die
+  /// Sprach-Chips im Detail-Panel erreichbar, nicht als eigene Zeile.
+  Stream<List<OracleTable>> watchFiltered({
+    String? categoryId,
+    String? sourceId,
+    String? oracleType,
+    String? language,
+    String? tagId,
+    String? collectionId,
+    String searchQuery = '',
+    bool hideTranslations = true,
+  }) {
+    final conditions = <String>[];
+    final vars = <Variable>[];
+
+    void eq(String column, String? value) {
+      if (value == null) return;
+      conditions.add('t.$column = ?');
+      vars.add(Variable.withString(value));
+    }
+
+    eq('category_id', categoryId);
+    eq('source_id', sourceId);
+    eq('oracle_type', oracleType);
+    eq('language', language);
+
+    if (hideTranslations) {
+      conditions.add("NOT EXISTS (SELECT 1 FROM edges x "
+          "WHERE x.relation = 'translation_of' AND x.from_id = t.id)");
+    }
+
+    if (collectionId != null) {
+      conditions.add('EXISTS (SELECT 1 FROM collection_tables ct '
+          'WHERE ct.collection_id = ? AND ct.table_id = t.id)');
+      vars.add(Variable.withString(collectionId));
+    }
+
+    if (tagId != null) {
+      conditions.add('EXISTS (SELECT 1 FROM table_tags tt '
+          'WHERE tt.tag_id = ? AND tt.table_id = t.id)');
+      vars.add(Variable.withString(tagId));
+    }
+
+    final trimmed = searchQuery.trim();
+    if (trimmed.isNotEmpty) {
+      // Die FTS-Unterabfrage ist bewusst NICHT korreliert (kein Bezug auf t):
+      // so wertet SQLite sie einmal aus statt einmal je Tabelle.
+      final match = ftsPrefixQuery(trimmed);
+      final search = <String>[
+        if (match != null) 't.id IN ($_ftsTableIdsSql)',
+        "t.name LIKE ? ESCAPE '\\'",
+        "IFNULL(t.description, '') LIKE ? ESCAPE '\\'",
+      ];
+      if (match != null) vars.add(Variable.withString(match));
+      final like = Variable.withString('%${_escapeLike(trimmed)}%');
+      vars.addAll([like, like]);
+      conditions.add('(${search.join(' OR ')})');
+    }
+
+    final where =
+        conditions.isEmpty ? '' : ' WHERE ${conditions.join(' AND ')}';
+    return db
+        .customSelect(
+          'SELECT t.* FROM oracle_tables t$where ORDER BY t.updated_at DESC',
+          variables: vars,
+          // Ohne diese Liste bemerkt der Stream Änderungen an den
+          // mitgefilterten Tabellen nicht.
+          readsFrom: {oracleTables, edges, entries, collectionTables, tableTags},
+        )
+        .map((row) => oracleTables.map(row.data))
+        .watch();
+  }
+
+  /// Tabellen-IDs, deren Einträge auf den FTS-Ausdruck passen.
+  /// entries_fts wird NICHT aliasiert: MATCH verlangt links den echten
+  /// Tabellennamen, ein Alias ergibt "no such column".
+  static const _ftsTableIdsSql =
+      'SELECT e.table_id FROM entries_fts '
+      'JOIN entries e ON e.rowid = entries_fts.rowid '
+      'WHERE entries_fts MATCH ?';
+
   /// Volltextsuche: gibt Tabellen-IDs zurück, die zu [query] passen.
   ///
   /// Zwei Quellen werden vereinigt:
@@ -94,16 +186,10 @@ class TableDao extends DatabaseAccessor<VaultDatabase> with _$TableDaoMixin {
     // ── 1. Einträge via FTS5 ────────────────────────────────────────────────
     final match = ftsPrefixQuery(trimmed);
     if (match != null) {
-      // Kein ORDER BY rank: die Reihenfolge geht ohnehin verloren, weil der
-      // Aufrufer (tableListProvider) nach updatedAt sortiert — und DISTINCT
-      // verträgt sich nicht mit einem ORDER BY auf einer nicht selektierten
-      // Spalte.
-      // entries_fts NICHT aliasen: der MATCH-Operator verlangt links den
-      // echten Tabellennamen, ein Alias ergibt "no such column".
+      // Kein ORDER BY rank: die Reihenfolge geht ohnehin verloren, weil die
+      // Liste nach updatedAt sortiert wird.
       final rows = await db.customSelect(
-        'SELECT DISTINCT e.table_id AS table_id '
-        'FROM entries_fts JOIN entries e ON e.rowid = entries_fts.rowid '
-        'WHERE entries_fts MATCH ?',
+        _ftsTableIdsSql,
         variables: [Variable.withString(match)],
         readsFrom: {entries},
       ).get();
