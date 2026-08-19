@@ -62,6 +62,64 @@ class EdgeDao extends DatabaseAccessor<VaultDatabase> with _$EdgeDaoMixin {
     });
   }
 
+  /// Ersetzt in EINER Transaktion alle Wiki-Link-/Embed-Edges, die von einer
+  /// Tabelle und ihren Einträgen ausgehen.
+  ///
+  /// Der Save-Hook rief vorher [replaceWikiLinkEdges] pro Eintrag auf — bei
+  /// einer d1000-Tabelle also tausend Transaktionen. Hier ist es eine.
+  Future<void> replaceWikiLinkEdgesForTable({
+    required String tableId,
+    required List<String> entryIds,
+    required List<EdgesCompanion> newEdges,
+  }) async {
+    await transaction(() async {
+      await (delete(edges)
+            ..where((e) =>
+                e.relation.isIn(const ['wikilink', 'embed']) &
+                ((e.fromType.equals('table') & e.fromId.equals(tableId)) |
+                    (e.fromType.equals('entry') & e.fromId.isIn(entryIds)))))
+          .go();
+      if (newEdges.isEmpty) return;
+      await batch((b) => b.insertAll(edges, newEdges));
+    });
+  }
+
+  /// Entfernt alle Edges, die von [type]/[id] ausgehen oder darauf zeigen.
+  ///
+  /// WARUM VON HAND?
+  /// edges ist bewusst generisch (from_type/from_id statt echter
+  /// Fremdschlüssel), damit jede Relation abbildbar ist — dafür kann SQLite
+  /// hier nicht kaskadieren. Jeder Löschpfad muss selbst aufräumen, sonst
+  /// wachsen verwaiste Edges unbegrenzt und verfälschen später den Graph.
+  Future<int> purgeFor(String type, String id) => (delete(edges)
+        ..where((e) =>
+            (e.fromType.equals(type) & e.fromId.equals(id)) |
+            (e.toType.equals(type) & e.toId.equals(id))))
+      .go();
+
+  /// Entfernt Edges, deren Endpunkt es nicht mehr gibt — Wartung für Bestände,
+  /// die vor den Aufräum-Pfaden entstanden sind.
+  /// Gibt die Anzahl entfernter Edges zurück.
+  Future<int> purgeOrphans() {
+    // Nur bekannte Typen prüfen: käme später ein from_type dazu, den diese
+    // Abfrage nicht kennt, würde sonst alles davon gelöscht.
+    const sql = "DELETE FROM edges WHERE "
+        "(from_type = 'table' AND NOT EXISTS "
+        "   (SELECT 1 FROM oracle_tables t WHERE t.id = from_id)) "
+        "OR (to_type = 'table' AND NOT EXISTS "
+        "   (SELECT 1 FROM oracle_tables t WHERE t.id = to_id)) "
+        "OR (from_type = 'entry' AND NOT EXISTS "
+        "   (SELECT 1 FROM entries e WHERE e.id = from_id)) "
+        "OR (to_type = 'entry' AND NOT EXISTS "
+        "   (SELECT 1 FROM entries e WHERE e.id = to_id)) "
+        "OR (from_type = 'media' AND NOT EXISTS "
+        "   (SELECT 1 FROM media_files m WHERE m.id = from_id)) "
+        "OR (to_type = 'media' AND NOT EXISTS "
+        "   (SELECT 1 FROM media_files m WHERE m.id = to_id))";
+    return db.customUpdate(sql,
+        updates: {edges}, updateKind: UpdateKind.delete);
+  }
+
   /// Baut eine Wikilink-/Embed-Edge (ohne sie zu speichern).
   static EdgesCompanion buildLinkEdge({
     required String fromType,
@@ -93,21 +151,40 @@ class EdgeDao extends DatabaseAccessor<VaultDatabase> with _$EdgeDaoMixin {
                 e.relation.isIn(const ['wikilink', 'embed'])))
           .watch();
 
-  /// Alle Wiki-Link-/Embed-Edges, die auf [tableId] ODER einen seiner
-  /// Einträge zeigen — die vollständige Backlink-Menge einer Tabelle
-  /// (eine Query, siehe edges.dart-Konzept).
-  Stream<List<Edge>> watchBacklinksToTable(String tableId) {
-    final entryIds = selectOnly(entries)
-      ..addColumns([entries.id])
-      ..where(entries.tableId.equals(tableId));
-
-    return (select(edges)
-          ..where((e) =>
-              e.relation.isIn(const ['wikilink', 'embed']) &
-              ((e.toType.equals('table') & e.toId.equals(tableId)) |
-                  (e.toType.equals('entry') &
-                      e.toId.isInQuery(entryIds)))))
-        .watch();
+  /// Backlinks auf [tableId] — schon aufgelöst zu Quell-Tabelle und (bei
+  /// Eintrags-Links) Eintragstext.
+  ///
+  /// WARUM ROHES SQL?
+  /// Die Auflösung lief vorher im Provider: pro Edge zwei sequenzielle
+  /// Abfragen (Eintrag holen, dann dessen Tabelle). Bei 200 Backlinks waren
+  /// das 400 Round-Trips — hier ist es ein Join.
+  ///
+  /// Verwaiste Edges (Eintrag oder Tabelle existiert nicht mehr) fallen durch
+  /// den inneren Join heraus. Selbstverweise filtert die WHERE-Klausel.
+  Stream<List<BacklinkRow>> watchBacklinkRows(String tableId) {
+    return customSelect(
+      "SELECT e.relation AS relation, e.from_id AS from_id, "
+      "       src.id AS source_table_id, src.name AS source_table_name, "
+      "       ent.content AS entry_content "
+      "FROM edges e "
+      "LEFT JOIN entries ent ON e.from_type = 'entry' AND ent.id = e.from_id "
+      "JOIN oracle_tables src ON src.id = CASE e.from_type "
+      "       WHEN 'entry' THEN ent.table_id WHEN 'table' THEN e.from_id END "
+      "WHERE e.relation IN ('wikilink', 'embed') "
+      "  AND ((e.to_type = 'table' AND e.to_id = ?1) "
+      "       OR (e.to_type = 'entry' "
+      "           AND e.to_id IN (SELECT id FROM entries WHERE table_id = ?1))) "
+      "  AND src.id <> ?1 "
+      "ORDER BY LOWER(src.name)",
+      variables: [Variable.withString(tableId)],
+      readsFrom: {edges, entries, oracleTables},
+    ).map((row) => BacklinkRow(
+          fromId: row.read<String>('from_id'),
+          sourceTableId: row.read<String>('source_table_id'),
+          sourceTableName: row.read<String>('source_table_name'),
+          entryContent: row.read<String?>('entry_content'),
+          isEmbed: row.read<String>('relation') == 'embed',
+        )).watch();
   }
 
   /// Alle ausgehenden Wiki-Link-/Embed-Edges von [fromType]/[fromId].
@@ -209,4 +286,25 @@ class EdgeDao extends DatabaseAccessor<VaultDatabase> with _$EdgeDaoMixin {
       return [source, ...translations];
     });
   }
+}
+
+/// Ein aufgelöster Backlink, wie ihn [EdgeDao.watchBacklinkRows] liefert.
+class BacklinkRow {
+  /// ID der verweisenden Quelle — Eintrag oder Tabelle, je nach from_type.
+  final String fromId;
+  final String sourceTableId;
+  final String sourceTableName;
+
+  /// Text des verweisenden Eintrags; null, wenn der Link in der
+  /// Tabellen-Beschreibung steht.
+  final String? entryContent;
+  final bool isEmbed;
+
+  const BacklinkRow({
+    required this.fromId,
+    required this.sourceTableId,
+    required this.sourceTableName,
+    required this.entryContent,
+    required this.isEmbed,
+  });
 }

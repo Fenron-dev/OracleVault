@@ -26,14 +26,24 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../../services/backup_service.dart';
 import '../db/vault_database.dart';
+import 'vault_recovery.dart';
 
 /// Ergebnis von [VaultManager.open] und [VaultManager.create].
 class OpenedVault {
   final String vaultPath;
   final VaultDatabase database;
 
-  const OpenedVault({required this.vaultPath, required this.database});
+  /// Nicht-kritischer Hinweis aus dem Öffnungsvorgang, z. B. ein
+  /// fehlgeschlagenes Tages-Backup. Null = alles glatt gelaufen.
+  final String? warning;
+
+  const OpenedVault({
+    required this.vaultPath,
+    required this.database,
+    this.warning,
+  });
 }
 
 /// Verwaltet das Vault-Ordner-Format.
@@ -84,8 +94,56 @@ abstract class VaultManager {
       throw VaultNotFoundException(vaultPath);
     }
     await _ensureSubdirs(vaultPath);
+
+    // ── Zustand der Datei prüfen ────────────────────────────────────────────
+    // Muss ganz am Anfang stehen: alles Weitere (Snapshot, Migration) setzt
+    // eine lesbare index.db voraus. Wirft, wenn die Datei beschädigt ist —
+    // dann wird der Vault nicht geöffnet.
+    final recoveryNotice = await VaultRecovery.prepare(vaultPath);
+
+    // ── Pre-Migration-Snapshot ───────────────────────────────────────────────
+    // Muss VOR dem Öffnen laufen: sobald Drift die Verbindung aufbaut, migriert
+    // es, und der Snapshot nutzt VACUUM INTO — das geht nicht innerhalb einer
+    // Transaktion, also auch nicht aus onUpgrade heraus.
+    //
+    // Scheitert der Snapshot, wird NICHT geöffnet. Eine Migration ohne
+    // Sicherung ist genau das Szenario, das hier verhindert werden soll — der
+    // Vault bleibt unangetastet und der Nutzer kann Platz schaffen und es
+    // erneut versuchen.
+    final snapshot = await BackupService.createPreMigrationSnapshotIfNeeded(
+        vaultPath, VaultDatabase.kSchemaVersion);
+    if (snapshot != null && !snapshot.success) {
+      throw VaultMigrationBackupException(snapshot.error ?? 'unbekannt');
+    }
+
     final db = VaultDatabase(dbPath(vaultPath));
-    return OpenedVault(vaultPath: vaultPath, database: db);
+    // Verbindung sofort erzwingen, damit die Migration hier läuft (und nicht
+    // irgendwann später bei der ersten Query im UI).
+    await db.customSelect('SELECT 1').get();
+
+    // ── Tages-Backup ────────────────────────────────────────────────────────
+    // Nicht kritisch: schlägt es fehl, ist der Vault trotzdem benutzbar.
+    String? warning = recoveryNotice;
+    try {
+      if (!await BackupService.autoBackupExistsForToday(vaultPath)) {
+        final config = await readConfig(vaultPath);
+        final keep = (config['backupKeepCount'] as num?)?.toInt() ?? 7;
+        final result =
+            await BackupService.createAutoBackup(vaultPath, keepCount: keep);
+        if (!result.success) warning = _join(warning, result.error);
+      }
+    } catch (e) {
+      warning = _join(warning, 'Tages-Backup fehlgeschlagen: $e');
+    }
+
+    return OpenedVault(
+        vaultPath: vaultPath, database: db, warning: warning);
+  }
+
+  /// Fügt zwei Hinweise zu einer Meldung zusammen (beide können null sein).
+  static String? _join(String? a, String? b) {
+    final parts = [a, b].whereType<String>().where((s) => s.isNotEmpty);
+    return parts.isEmpty ? null : parts.join(' ');
   }
 
   // ── Vault anlegen ──────────────────────────────────────────────────────────
@@ -206,6 +264,17 @@ class VaultNotFoundException implements Exception {
   VaultNotFoundException(this.path);
   @override
   String toString() => 'Kein gültiger Vault unter: $path';
+}
+
+/// Der Pre-Migration-Snapshot konnte nicht erstellt werden — der Vault wurde
+/// deshalb NICHT geöffnet und nicht migriert.
+class VaultMigrationBackupException implements Exception {
+  final String reason;
+  VaultMigrationBackupException(this.reason);
+  @override
+  String toString() =>
+      'Sicherung vor dem Schema-Update fehlgeschlagen, Vault nicht geöffnet: '
+      '$reason';
 }
 
 class VaultAlreadyExistsException implements Exception {

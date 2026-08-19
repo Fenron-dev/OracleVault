@@ -33,6 +33,8 @@ import '../../data/db/daos/entry_dao.dart';
 import '../../data/db/daos/tag_dao.dart';
 import '../../data/db/daos/category_dao.dart';
 import '../../data/db/daos/source_dao.dart';
+import '../../domain/roll_engine/roll_engine.dart';
+import '../../services/deck_state_service.dart';
 import 'library_state.dart';
 
 // ── Datenbank-Zugriff ─────────────────────────────────────────────────────────
@@ -145,73 +147,36 @@ final libraryViewModeProvider =
     StateProvider<LibraryViewMode>((ref) => LibraryViewMode.list);
 
 /// Tabellen-Liste nach aktivem Filter und Suche.
-/// Übersetzungs-Tabellen werden grundsätzlich ausgeblendet — sie sind
-/// über die Sprach-Chips im Detail-Panel erreichbar, nicht als eigene Zeilen.
+///
+/// Filtern und Suchen passiert vollständig in SQL (siehe
+/// TableDao.watchFiltered). Vorher lud dieser Provider bei jeder Änderung die
+/// gesamte Bibliothek in den Speicher und filterte in Dart — pro Tastendruck
+/// im Suchfeld einmal quer durch alle Tabellen.
 final tableListProvider = StreamProvider<List<OracleTable>>((ref) {
   final dao = ref.watch(tableDaoProvider);
   if (dao == null) return const Stream.empty();
 
   final filter = ref.watch(libraryFilterProvider);
+  return dao.watchFiltered(
+    categoryId: filter.categoryId,
+    sourceId: filter.sourceId,
+    oracleType: filter.oracleType,
+    language: filter.language,
+    tagId: filter.tagId,
+    collectionId: filter.collectionId,
+    searchQuery: filter.searchQuery,
+  );
+});
 
-  return dao.watchAll().asyncMap((tables) async {
-    var result = tables;
-
-    // Übersetzungs-Tabellen ausblenden (fromId-Seite einer translation_of-Edge).
-    final db = ref.read(vaultDbProvider);
-    if (db != null) {
-      final translationIds =
-          await db.edgeDao.fetchAllTranslationTableIds();
-      if (translationIds.isNotEmpty) {
-        result =
-            result.where((t) => !translationIds.contains(t.id)).toList();
-      }
-    }
-
-    if (!filter.isActive) return result;
-
-    // Collection-Filter: nur Tabellen dieser Collection zeigen.
-    if (filter.collectionId != null && db != null) {
-      final collectionTableIds = await db.collectionDao
-          .fetchTableIdsFor(filter.collectionId!);
-      result = result
-          .where((t) => collectionTableIds.contains(t.id))
-          .toList();
-    }
-
-    // Quellen-Filter.
-    if (filter.sourceId != null) {
-      result =
-          result.where((t) => t.sourceId == filter.sourceId).toList();
-    }
-
-    // Kategorie-Filter.
-    if (filter.categoryId != null) {
-      result = result
-          .where((t) => t.categoryId == filter.categoryId)
-          .toList();
-    }
-
-    // Oracle-Typ-Filter.
-    if (filter.oracleType != null) {
-      result =
-          result.where((t) => t.oracleType == filter.oracleType).toList();
-    }
-
-    // Sprach-Filter.
-    if (filter.language != null) {
-      result =
-          result.where((t) => t.language == filter.language).toList();
-    }
-
-    // FTS5-Volltextsuche: IDs, die matchen.
-    if (filter.searchQuery.isNotEmpty) {
-      final matchIds =
-          (await dao.searchTableIds(filter.searchQuery)).toSet();
-      result = result.where((t) => matchIds.contains(t.id)).toList();
-    }
-
-    return result;
-  });
+/// Gespeicherter Deck-Zustand einer Tabelle (null = noch nie gemischt).
+///
+/// Nach jedem Ziehen und nach „neu mischen" invalidieren — die Restanzeige im
+/// Detail-Panel hängt daran.
+final deckStateProvider =
+    FutureProvider.family<DeckState?, String>((ref, tableId) async {
+  final db = ref.watch(vaultDbProvider);
+  if (db == null) return null;
+  return DeckStateService(db: db).load(tableId);
 });
 
 /// Einträge der ausgewählten Tabelle.
@@ -240,51 +205,26 @@ final selectedTableProvider = StreamProvider<OracleTable?>((ref) {
 
 /// Backlinks der ausgewählten Tabelle: alle Wiki-Link-/Embed-Edges, die auf
 /// die Tabelle oder einen ihrer Einträge zeigen — aufgelöst zu Quell-Tabelle
-/// (+ ggf. Quell-Eintrag). Selbstverweise (Quelle = diese Tabelle) werden
-/// ausgeblendet; pro Quelle erscheint nur ein Backlink.
+/// (+ ggf. Quell-Eintrag). Selbstverweise und verwaiste Edges filtert bereits
+/// die Abfrage; pro Quelle erscheint nur ein Backlink.
 final backlinksForSelectedTableProvider =
     StreamProvider<List<Backlink>>((ref) {
   final db = ref.watch(vaultDbProvider);
   final selectedId = ref.watch(selectedTableIdProvider);
   if (db == null || selectedId == null) return const Stream.empty();
 
-  return db.edgeDao.watchBacklinksToTable(selectedId).asyncMap((edges) async {
-    final result = <Backlink>[];
-    final seen = <String>{}; // sourceTableId:sourceEntryId
-
-    for (final edge in edges) {
-      String sourceTableId;
-      String? entryContent;
-
-      if (edge.fromType == 'entry') {
-        final entry = await db.entryDao.fetchById(edge.fromId);
-        if (entry == null) continue; // verwaiste Edge
-        sourceTableId = entry.tableId;
-        entryContent = entry.content;
-      } else if (edge.fromType == 'table') {
-        sourceTableId = edge.fromId;
-      } else {
-        continue; // andere Quelltypen (künftig) hier nicht anzeigen
-      }
-
-      if (sourceTableId == selectedId) continue; // Selbstverweis
-      if (!seen.add('$sourceTableId:${edge.fromId}')) continue;
-
-      final sourceTable = await db.tableDao.fetchById(sourceTableId);
-      if (sourceTable == null) continue;
-
-      result.add(Backlink(
-        sourceTableId: sourceTableId,
-        sourceTableName: sourceTable.name,
-        sourceEntryContent: entryContent,
-        isEmbed: edge.relation == 'embed',
-      ));
-    }
-
-    result.sort((a, b) => a.sourceTableName
-        .toLowerCase()
-        .compareTo(b.sourceTableName.toLowerCase()));
-    return result;
+  return db.edgeDao.watchBacklinkRows(selectedId).map((rows) {
+    final seen = <String>{};
+    return [
+      for (final row in rows)
+        if (seen.add(row.fromId))
+          Backlink(
+            sourceTableId: row.sourceTableId,
+            sourceTableName: row.sourceTableName,
+            sourceEntryContent: row.entryContent,
+            isEmbed: row.isEmbed,
+          ),
+    ];
   });
 });
 

@@ -18,7 +18,8 @@ import 'oracle_tables.dart';
 ///   (Titel, URL, Inhalt, Metadaten je nach Quellen-Typ).
 class InboxItems extends Table {
   TextColumn get id => text()();
-  TextColumn get watchSourceId => text().references(WatchSources, #id)();
+  TextColumn get watchSourceId =>
+      text().references(WatchSources, #id, onDelete: KeyAction.cascade)();
 
   /// Verarbeitungsstatus: 'pending' | 'accepted' | 'dismissed' | 'auto_imported'
   TextColumn get status => text().withDefault(const Constant('pending'))();
@@ -27,8 +28,9 @@ class InboxItems extends Table {
   TextColumn get rawDataJson => text()();
 
   /// Verknüpfte OracleTable nach erfolgtem Import. Null solange pending.
-  TextColumn get importedTableId =>
-      text().nullable().references(OracleTables, #id)();
+  TextColumn get importedTableId => text()
+      .nullable()
+      .references(OracleTables, #id, onDelete: KeyAction.setNull)();
 
   DateTimeColumn get foundAt => dateTime()();
 

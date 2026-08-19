@@ -14,7 +14,6 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/di.dart';
 import '../../core/theme.dart';
-import '../../data/vault/vault_manager.dart';
 import '../../services/backup_service.dart';
 
 /// Backup-Einträge als Riverpod-Provider.
@@ -58,6 +57,23 @@ class _BackupSettingsScreenState
         setState(() => _working = false);
         ref.invalidate(backupListProvider);
       }
+    }
+  }
+
+  /// Wie [_runAction], aber für Aufräum-Aktionen: die melden einen Satz,
+  /// keinen Datei-Pfad.
+  Future<void> _runMaintenance(Future<String> Function() action) async {
+    setState(() {
+      _working = true;
+      _message = null;
+    });
+    try {
+      final summary = await action();
+      if (mounted) setState(() => _message = '✓ $summary');
+    } catch (e) {
+      if (mounted) setState(() => _message = '✗ Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _working = false);
     }
   }
 
@@ -141,6 +157,36 @@ class _BackupSettingsScreenState
                   },
           ),
 
+          const Gap(AppTheme.sp8),
+          const _SectionHeader('Wartung'),
+          ListTile(
+            leading: const Icon(Icons.link_off),
+            title: const Text('Verwaiste Verknüpfungen entfernen'),
+            subtitle: const Text(
+                'Edges, deren Tabelle, Eintrag oder Medium es nicht mehr gibt'),
+            onTap: _working
+                ? null
+                : () => _runMaintenance(() async {
+                      final n = await vault.database.edgeDao.purgeOrphans();
+                      return n == 0
+                          ? 'Keine verwaisten Verknüpfungen gefunden.'
+                          : '$n verwaiste Verknüpfungen entfernt.';
+                    }),
+          ),
+          ListTile(
+            leading: const Icon(Icons.image_not_supported_outlined),
+            title: const Text('Thumbnail-Cache leeren'),
+            subtitle: const Text('Wird bei Bedarf neu erzeugt'),
+            onTap: _working
+                ? null
+                : () => _runMaintenance(() async {
+                      final svc = ref.read(thumbnailServiceProvider);
+                      if (svc == null) return 'Kein Vault geöffnet.';
+                      final n = await svc.clearCache();
+                      return '$n Thumbnails gelöscht.';
+                    }),
+          ),
+
           if (_working) ...[
             const Gap(AppTheme.sp16),
             const Center(child: CircularProgressIndicator()),
@@ -173,7 +219,7 @@ class _BackupSettingsScreenState
                 children: backups
                     .map((b) => _BackupTile(
                           entry: b,
-                          onRestore: () => _confirmRestore(context, vault, b),
+                          onRestore: () => _confirmRestore(context, b),
                         ))
                     .toList(),
               );
@@ -185,7 +231,7 @@ class _BackupSettingsScreenState
   }
 
   Future<void> _confirmRestore(
-      BuildContext context, OpenedVault vault, BackupEntry entry) async {
+      BuildContext context, BackupEntry entry) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -193,7 +239,9 @@ class _BackupSettingsScreenState
         content: Text(
           'Alle aktuellen Daten werden durch das Backup\n'
           '"${entry.filename}" ersetzt.\n\n'
-          'Diese Aktion kann nicht rückgängig gemacht werden.',
+          'Der bisherige Stand wird vorher als "pre-restore-…" im '
+          'Backups-Ordner gesichert. Der Vault wird dafür kurz geschlossen '
+          'und danach neu geöffnet.',
         ),
         actions: [
           TextButton(
@@ -211,8 +259,20 @@ class _BackupSettingsScreenState
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _runAction(() =>
-        BackupService.restoreFromDbSnapshot(vault.vaultPath, entry.path));
+
+    // Der Restore läuft im VaultSession-Provider, nicht hier: er koppelt den
+    // Vault ab, wodurch der Router zum Picker springt und diesen Screen
+    // abräumt. Die Erfolgsmeldung landet deshalb im vaultNotice, den die
+    // Library anzeigt.
+    final session = ref.read(vaultSessionProvider);
+    final notice = ref.read(vaultNoticeProvider.notifier);
+    await _runAction(() async {
+      final result = await session.restoreSnapshot(entry.path);
+      notice.state = result.success
+          ? 'Backup „${entry.filename}" wiederhergestellt.'
+          : result.error;
+      return result;
+    });
   }
 }
 
@@ -265,6 +325,7 @@ class _BackupTile extends StatelessWidget {
 
   IconData _typeIcon(BackupType type) => switch (type) {
         BackupType.preMigration => Icons.update,
+        BackupType.preRestore => Icons.history,
         BackupType.auto => Icons.schedule,
         BackupType.manual => Icons.save,
         BackupType.jsonExport => Icons.data_object,

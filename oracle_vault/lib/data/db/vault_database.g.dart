@@ -605,7 +605,7 @@ class $CategoriesTable extends Categories
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES categories (id)',
+      'REFERENCES categories (id) ON DELETE SET NULL',
     ),
   );
   @override
@@ -921,7 +921,7 @@ class $OracleTablesTable extends OracleTables
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES categories (id)',
+      'REFERENCES categories (id) ON DELETE SET NULL',
     ),
   );
   static const VerificationMeta _sourceIdMeta = const VerificationMeta(
@@ -935,7 +935,7 @@ class $OracleTablesTable extends OracleTables
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES sources (id)',
+      'REFERENCES sources (id) ON DELETE SET NULL',
     ),
   );
   static const VerificationMeta _languageMeta = const VerificationMeta(
@@ -2154,7 +2154,7 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES oracle_tables (id)',
+      'REFERENCES oracle_tables (id) ON DELETE CASCADE',
     ),
   );
   static const VerificationMeta _positionMeta = const VerificationMeta(
@@ -2231,7 +2231,7 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES media_files (id)',
+      'REFERENCES media_files (id) ON DELETE SET NULL',
     ),
   );
   static const VerificationMeta _subtableIdMeta = const VerificationMeta(
@@ -2245,7 +2245,7 @@ class $EntriesTable extends Entries with TableInfo<$EntriesTable, Entry> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES oracle_tables (id)',
+      'REFERENCES oracle_tables (id) ON DELETE SET NULL',
     ),
   );
   static const VerificationMeta _confidenceLowMeta = const VerificationMeta(
@@ -3094,7 +3094,7 @@ class $TableTagsTable extends TableTags
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES oracle_tables (id)',
+      'REFERENCES oracle_tables (id) ON DELETE CASCADE',
     ),
   );
   static const VerificationMeta _tagIdMeta = const VerificationMeta('tagId');
@@ -3106,7 +3106,7 @@ class $TableTagsTable extends TableTags
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES tags (id)',
+      'REFERENCES tags (id) ON DELETE CASCADE',
     ),
   );
   @override
@@ -3622,7 +3622,7 @@ class $CollectionTablesTable extends CollectionTables
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES collections (id)',
+      'REFERENCES collections (id) ON DELETE CASCADE',
     ),
   );
   static const VerificationMeta _tableIdMeta = const VerificationMeta(
@@ -3636,7 +3636,7 @@ class $CollectionTablesTable extends CollectionTables
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES oracle_tables (id)',
+      'REFERENCES oracle_tables (id) ON DELETE CASCADE',
     ),
   );
   static const VerificationMeta _positionMeta = const VerificationMeta(
@@ -5110,7 +5110,7 @@ class $InboxItemsTable extends InboxItems
     type: DriftSqlType.string,
     requiredDuringInsert: true,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES watch_sources (id)',
+      'REFERENCES watch_sources (id) ON DELETE CASCADE',
     ),
   );
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
@@ -5145,7 +5145,7 @@ class $InboxItemsTable extends InboxItems
     type: DriftSqlType.string,
     requiredDuringInsert: false,
     defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES oracle_tables (id)',
+      'REFERENCES oracle_tables (id) ON DELETE SET NULL',
     ),
   );
   static const VerificationMeta _foundAtMeta = const VerificationMeta(
@@ -5571,6 +5571,93 @@ abstract class _$VaultDatabase extends GeneratedDatabase {
     watchSources,
     inboxItems,
   ];
+  @override
+  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'categories',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('categories', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'categories',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('oracle_tables', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'sources',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('oracle_tables', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'oracle_tables',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('entries', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'media_files',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('entries', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'oracle_tables',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('entries', kind: UpdateKind.update)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'oracle_tables',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('table_tags', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'tags',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('table_tags', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'collections',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('collection_tables', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'oracle_tables',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('collection_tables', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'watch_sources',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('inbox_items', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'oracle_tables',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('inbox_items', kind: UpdateKind.update)],
+    ),
+  ]);
 }
 
 typedef $$SourcesTableCreateCompanionBuilder =

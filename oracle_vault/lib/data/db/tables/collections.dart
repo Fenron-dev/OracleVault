@@ -26,8 +26,10 @@ class Collections extends Table {
 
 /// Verbindungstabelle: Collection ↔ OracleTable, geordnet nach [position].
 class CollectionTables extends Table {
-  TextColumn get collectionId => text().references(Collections, #id)();
-  TextColumn get tableId => text().references(OracleTables, #id)();
+  TextColumn get collectionId =>
+      text().references(Collections, #id, onDelete: KeyAction.cascade)();
+  TextColumn get tableId =>
+      text().references(OracleTables, #id, onDelete: KeyAction.cascade)();
 
   /// Reihenfolge der Tabelle innerhalb der Sammlung.
   IntColumn get position => integer()();

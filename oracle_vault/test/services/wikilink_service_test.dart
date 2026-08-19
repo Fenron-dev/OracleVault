@@ -169,25 +169,54 @@ void main() {
     expect(await db.edgeDao.isTranslation('t1'), isTrue);
   });
 
-  test('watchBacklinksToTable: Links auf Tabelle UND ihre Einträge', () async {
-    // t2 „Monster" hat den Eintrag „Goblin". Zwei Quellen verlinken:
-    // t1/e1 → auf die Tabelle, t3/e3 → auf den Eintrag.
-    await insertTable('t1', 'Quelle A');
-    await insertTable('t2', 'Monster');
-    await insertTable('t3', 'Quelle B');
-    await insertEntry('goblin', 't2', 0, 'Goblin');
-    await insertEntry('e1', 't1', 0, '[[Monster]]');
-    await insertEntry('e3', 't3', 0, '[[Monster#Goblin]]');
+  group('watchBacklinkRows (aufgelöste Backlinks für das Detail-Panel)', () {
+    setUp(() async {
+      // t2 „Monster" hat den Eintrag „Goblin". Zwei Quellen verlinken:
+      // t1/e1 → auf die Tabelle, t3/e3 → auf den Eintrag.
+      await insertTable('t1', 'Quelle A');
+      await insertTable('t2', 'Monster');
+      await insertTable('t3', 'Quelle B');
+      await insertEntry('goblin', 't2', 0, 'Goblin');
+      await insertEntry('e1', 't1', 0, '[[Monster]]');
+      await insertEntry('e3', 't3', 0, '[[Monster#Goblin]]');
+      await svc.materializeForTable('t1');
+      await svc.materializeForTable('t3');
+    });
 
-    await svc.materializeForTable('t1');
-    await svc.materializeForTable('t3');
+    test('findet Links auf die Tabelle UND auf ihre Einträge', () async {
+      final rows = await db.edgeDao.watchBacklinkRows('t2').first;
+      expect(rows.map((r) => r.fromId).toSet(), {'e1', 'e3'});
+      // Quell-Tabelle und Eintragstext kommen aus demselben Join mit.
+      expect(rows.map((r) => r.sourceTableName).toSet(), {'Quelle A', 'Quelle B'});
+      expect(rows.map((r) => r.entryContent),
+          containsAll(['[[Monster]]', '[[Monster#Goblin]]']));
+    });
 
-    final backlinks = await db.edgeDao.watchBacklinksToTable('t2').first;
-    expect(backlinks, hasLength(2));
-    expect(backlinks.map((e) => e.fromId).toSet(), {'e1', 'e3'});
+    test('sortiert nach Namen der Quell-Tabelle', () async {
+      final rows = await db.edgeDao.watchBacklinkRows('t2').first;
+      expect(rows.map((r) => r.sourceTableName), ['Quelle A', 'Quelle B']);
+    });
 
-    // Fremde Tabelle ohne Links auf t2 → keine Backlinks.
-    expect(await db.edgeDao.watchBacklinksToTable('t1').first, isEmpty);
+    test('Tabelle ohne eingehende Links hat keine Backlinks', () async {
+      expect(await db.edgeDao.watchBacklinkRows('t1').first, isEmpty);
+    });
+
+    test('Selbstverweise erscheinen nicht', () async {
+      await insertEntry('e2', 't2', 1, 'siehe [[Monster]]');
+      await svc.materializeForTable('t2');
+
+      final rows = await db.edgeDao.watchBacklinkRows('t2').first;
+      expect(rows.map((r) => r.sourceTableId), isNot(contains('t2')));
+    });
+
+    test('verwaiste Edges fallen heraus', () async {
+      // Eintrag löschen, ohne die Edge anzufassen — genau der Fall, den die
+      // Auflösung früher pro Zeile abfangen musste.
+      await (db.delete(db.entries)..where((e) => e.id.equals('e1'))).go();
+
+      final rows = await db.edgeDao.watchBacklinkRows('t2').first;
+      expect(rows.map((r) => r.fromId), ['e3']);
+    });
   });
 
   test('watchBacklinksTo liefert eingehende Links', () async {

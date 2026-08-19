@@ -79,6 +79,20 @@ class ThumbnailService {
     }
   }
 
+  /// Leert den gesamten Thumbnail-Cache und gibt die Zahl gelöschter Dateien
+  /// zurück. Alles darin ist aus den Original-Assets regenerierbar.
+  Future<int> clearCache() async {
+    final dir = Directory(cacheDir());
+    if (!await dir.exists()) return 0;
+    var count = 0;
+    await for (final e in dir.list()) {
+      if (e is! File) continue;
+      await e.delete();
+      count++;
+    }
+    return count;
+  }
+
   // ── Semaphore ─────────────────────────────────────────────────────────────
 
   Future<void> _acquire() {

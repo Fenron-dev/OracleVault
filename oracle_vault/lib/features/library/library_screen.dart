@@ -34,6 +34,20 @@ class LibraryScreen extends ConsumerWidget {
 
     final borderColor = AppTheme.border(context);
 
+    // Hinweise, die entstanden sind, während kein Screen sie zeigen konnte
+    // (Tages-Backup beim Öffnen, Restore) — nach dem Frame nachreichen, weil
+    // Provider-Zustand während des Builds nicht geändert werden darf.
+    final notice = ref.watch(vaultNoticeProvider);
+    if (notice != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        ref.read(vaultNoticeProvider.notifier).state = null;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(notice), duration: const Duration(seconds: 6)),
+        );
+      });
+    }
+
     return Scaffold(
       body: Column(
         children: [

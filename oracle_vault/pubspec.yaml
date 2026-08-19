@@ -21,6 +21,10 @@ dependencies:
   drift: ^2.23.1
   drift_flutter: ^0.2.4
   sqlite3_flutter_libs: ^0.5.24
+  # sqlite3: direkter Zugriff ohne Drift-Ebene — für konsistente Backup-
+  # Snapshots via `VACUUM INTO` (läuft nicht innerhalb einer Transaktion und
+  # damit nicht aus einer Drift-Migration heraus).
+  sqlite3: ^2.9.4
 
   # ─── State Management ─────────────────────────────────────────────────────
   flutter_riverpod: ^2.6.1
@@ -90,6 +94,8 @@ dependencies:
   image: ^3.3.0
 
   # ─── Hilfspakete ──────────────────────────────────────────────────────────
+  # meta: @visibleForTesting in der Datenschicht (ohne Flutter-Import).
+  meta: ^1.16.0
   intl: ^0.20.2
   gap: ^3.0.1
 

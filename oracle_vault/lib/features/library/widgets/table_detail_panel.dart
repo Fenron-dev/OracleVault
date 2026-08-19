@@ -20,6 +20,7 @@ import '../../../core/constants.dart';
 import '../../../core/theme.dart';
 import '../../../data/db/vault_database.dart';
 import '../../../domain/roll_engine/roll_engine.dart';
+import '../../../services/deck_state_service.dart';
 import '../../../services/llm/llm_profiles_store.dart';
 import '../../../services/llm/llm_service.dart';
 import '../../../services/llm/llm_tasks.dart';
@@ -78,7 +79,17 @@ class _TableDetailPanelState extends ConsumerState<TableDetailPanel> {
           .toList(),
     );
 
-    final result = await _rollEngine.rollOnce(rollTable);
+    // Deck-Tabellen ziehen ohne Zurücklegen — der Stapel überlebt den
+    // App-Neustart (siehe DeckStateService).
+    final RollResult? result = table.oracleType == 'deck'
+        ? await _drawFromDeck(table.id, rollTable)
+        : await _rollEngine.rollOnce(rollTable);
+
+    if (result == null) {
+      // Stapel leer: nichts überschreiben, der Hinweis steht am Button.
+      if (mounted) setState(() => _rolling = false);
+      return;
+    }
 
     Map<String, dynamic> modifiers = {};
     if (result.entry.modifierJson != null) {
@@ -99,6 +110,39 @@ class _TableDetailPanelState extends ConsumerState<TableDetailPanel> {
         );
       });
     }
+  }
+
+  /// Zieht die oberste Karte des gespeicherten Stapels und schreibt den
+  /// Zustand zurück. Null = Stapel ist leer.
+  Future<RollResult?> _drawFromDeck(String tableId, RollTable rollTable) async {
+    final db = ref.read(vaultDbProvider);
+    if (db == null) return null;
+    final service = DeckStateService(db: db);
+
+    final stored = await service.load(tableId);
+    // Ohne Zustand frisch mischen; mit Zustand an die aktuelle Tabelle
+    // angleichen (Einträge können sich seit dem letzten Mal geändert haben).
+    final state = stored == null
+        ? _rollEngine.shuffleDeck(rollTable)
+        : _rollEngine.reconcileDeck(stored, rollTable);
+    if (state.isEmpty) {
+      await service.save(state);
+      ref.invalidate(deckStateProvider(tableId));
+      return null;
+    }
+
+    final result = _rollEngine.drawFromDeck(state, rollTable);
+    await service.save(_rollEngine.advanceDeck(state));
+    ref.invalidate(deckStateProvider(tableId));
+    return result;
+  }
+
+  Future<void> _shuffleDeck(String tableId) async {
+    final db = ref.read(vaultDbProvider);
+    if (db == null) return;
+    await DeckStateService(db: db).clear(tableId);
+    ref.invalidate(deckStateProvider(tableId));
+    if (mounted) setState(() => _lastRoll = null);
   }
 
   @override
@@ -124,6 +168,7 @@ class _TableDetailPanelState extends ConsumerState<TableDetailPanel> {
           rolling: _rolling,
           onRoll: () => entriesAsync
               .whenData((entries) => _doRoll(table, entries)),
+          onShuffle: () => _shuffleDeck(table.id),
         );
       },
     );
@@ -139,6 +184,7 @@ class _DetailContent extends ConsumerWidget {
   final TestRollResult? lastRoll;
   final bool rolling;
   final VoidCallback onRoll;
+  final VoidCallback onShuffle;
 
   const _DetailContent({
     required this.table,
@@ -147,6 +193,7 @@ class _DetailContent extends ConsumerWidget {
     required this.lastRoll,
     required this.rolling,
     required this.onRoll,
+    required this.onShuffle,
   });
 
   @override
@@ -240,6 +287,11 @@ class _DetailContent extends ConsumerWidget {
 
             const SizedBox(height: AppTheme.sp12),
 
+            // ── Deck-Zustand ─────────────────────────────────────────
+            // Nur für 'deck': zeigt den Reststapel und bietet neu mischen an.
+            if (table.oracleType == 'deck')
+              _DeckStatusRow(tableId: table.id, onShuffle: onShuffle),
+
             // ── Würfel-Button ────────────────────────────────────────
             GestureDetector(
               onTap: rolling ? null : onRoll,
@@ -265,7 +317,9 @@ class _DetailContent extends ConsumerWidget {
                             size: 14, color: accentText),
                     const SizedBox(width: 6),
                     Text(
-                      'Würfeln (${table.diceExpr ?? table.oracleType})',
+                      table.oracleType == 'deck'
+                          ? 'Karte ziehen'
+                          : 'Würfeln (${table.diceExpr ?? table.oracleType})',
                       style: TextStyle(
                         fontSize: 12,
                         color: accentText,
@@ -1098,6 +1152,62 @@ class _EmptyDetail extends StatelessWidget {
       child: Center(
         child: Text('Tabelle auswählen',
             style: TextStyle(fontSize: 12, color: tertiary)),
+      ),
+    );
+  }
+}
+
+// ── Deck-Zustand ──────────────────────────────────────────────────────────────
+
+/// Reststapel-Anzeige mit „neu mischen" für Tabellen im Deck-Modus.
+///
+/// Der Zustand liegt in der DB, nicht im Widget: eine angefangene Hand soll den
+/// App-Neustart überleben (siehe DeckStateService).
+class _DeckStatusRow extends ConsumerWidget {
+  final String tableId;
+  final VoidCallback onShuffle;
+
+  const _DeckStatusRow({required this.tableId, required this.onShuffle});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final deck = ref.watch(deckStateProvider(tableId));
+    final entries = ref.watch(entriesForSelectedTableProvider);
+    final total = entries.valueOrNull?.length ?? 0;
+
+    final remaining = deck.valueOrNull?.remaining ?? total;
+    final empty = remaining == 0 && total > 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTheme.sp8),
+      child: Row(
+        children: [
+          Icon(Icons.style_outlined,
+              size: 12, color: AppTheme.textTertiary(context)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              empty
+                  ? 'Stapel leer — neu mischen'
+                  : '$remaining von $total Karten übrig',
+              style: TextStyle(
+                fontSize: 11,
+                color: empty
+                    ? Theme.of(context).colorScheme.error
+                    : AppTheme.textTertiary(context),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onShuffle,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Neu mischen', style: TextStyle(fontSize: 11)),
+          ),
+        ],
       ),
     );
   }

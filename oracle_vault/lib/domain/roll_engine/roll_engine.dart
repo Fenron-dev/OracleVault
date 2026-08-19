@@ -287,6 +287,30 @@ class RollEngine {
     );
   }
 
+  /// Passt einen gespeicherten Deck-Zustand an die aktuelle Tabelle an.
+  ///
+  /// Zwischen zwei Sitzungen kann sich die Tabelle geändert haben: gelöschte
+  /// Einträge fliegen aus Stapel und Ablage, neu hinzugekommene werden zufällig
+  /// in den Reststapel einsortiert (nicht angehängt — sonst kämen sie garantiert
+  /// zuletzt).
+  DeckState reconcileDeck(DeckState state, RollTable table) {
+    final current = table.entries.map((e) => e.id).toSet();
+    final remaining =
+        state.remainingIds.where(current.contains).toList();
+    final drawn = state.drawnIds.where(current.contains).toList();
+
+    final known = {...remaining, ...drawn};
+    for (final id in current.where((id) => !known.contains(id))) {
+      remaining.insert(_random.nextInt(remaining.length + 1), id);
+    }
+
+    return DeckState(
+      tableId: table.id,
+      remainingIds: remaining,
+      drawnIds: drawn,
+    );
+  }
+
   /// Gibt den neuen [DeckState] nach dem Ziehen zurück.
   DeckState advanceDeck(DeckState state) {
     if (state.isEmpty) return state;
