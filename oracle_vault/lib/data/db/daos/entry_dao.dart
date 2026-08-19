@@ -8,12 +8,13 @@
 import 'package:drift/drift.dart';
 
 import '../vault_database.dart';
+import '../tables/edges.dart';
 import '../tables/entries.dart';
 import '../tables/oracle_tables.dart';
 
 part 'entry_dao.g.dart';
 
-@DriftAccessor(tables: [Entries, OracleTables])
+@DriftAccessor(tables: [Entries, OracleTables, Edges])
 class EntryDao extends DatabaseAccessor<VaultDatabase> with _$EntryDaoMixin {
   EntryDao(super.db);
 
@@ -70,7 +71,12 @@ class EntryDao extends DatabaseAccessor<VaultDatabase> with _$EntryDaoMixin {
   }
 
   Future<int> deleteEntry(String id, String tableId) async {
-    final count = await (delete(entries)..where((e) => e.id.equals(id))).go();
+    // Edges zeigen ohne Fremdschlüssel auf den Eintrag — sie blieben sonst als
+    // verwaiste Zeilen liegen (siehe EdgeDao.purgeFor).
+    final count = await transaction(() async {
+      await db.edgeDao.purgeFor('entry', id);
+      return (delete(entries)..where((e) => e.id.equals(id))).go();
+    });
     await _touchTable(tableId);
     return count;
   }

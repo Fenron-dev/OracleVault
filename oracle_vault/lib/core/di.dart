@@ -86,7 +86,11 @@ final themeModeStringProvider =
 final mediaServiceProvider = Provider<MediaService?>((ref) {
   final vault = ref.watch(activeVaultProvider);
   if (vault == null) return null;
-  return MediaService(db: vault.database, vaultPath: vault.vaultPath);
+  return MediaService(
+    db: vault.database,
+    vaultPath: vault.vaultPath,
+    thumbnails: ref.watch(thumbnailServiceProvider),
+  );
 });
 
 /// Thumbnail-Service des aktuell geöffneten Vaults (null = kein Vault offen).

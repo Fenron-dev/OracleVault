@@ -60,6 +60,23 @@ class _BackupSettingsScreenState
     }
   }
 
+  /// Wie [_runAction], aber für Aufräum-Aktionen: die melden einen Satz,
+  /// keinen Datei-Pfad.
+  Future<void> _runMaintenance(Future<String> Function() action) async {
+    setState(() {
+      _working = true;
+      _message = null;
+    });
+    try {
+      final summary = await action();
+      if (mounted) setState(() => _message = '✓ $summary');
+    } catch (e) {
+      if (mounted) setState(() => _message = '✗ Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final vault = ref.watch(activeVaultProvider);
@@ -138,6 +155,36 @@ class _BackupSettingsScreenState
                         BackupService.createZipBackup(
                             vault.vaultPath, dir.path));
                   },
+          ),
+
+          const Gap(AppTheme.sp8),
+          const _SectionHeader('Wartung'),
+          ListTile(
+            leading: const Icon(Icons.link_off),
+            title: const Text('Verwaiste Verknüpfungen entfernen'),
+            subtitle: const Text(
+                'Edges, deren Tabelle, Eintrag oder Medium es nicht mehr gibt'),
+            onTap: _working
+                ? null
+                : () => _runMaintenance(() async {
+                      final n = await vault.database.edgeDao.purgeOrphans();
+                      return n == 0
+                          ? 'Keine verwaisten Verknüpfungen gefunden.'
+                          : '$n verwaiste Verknüpfungen entfernt.';
+                    }),
+          ),
+          ListTile(
+            leading: const Icon(Icons.image_not_supported_outlined),
+            title: const Text('Thumbnail-Cache leeren'),
+            subtitle: const Text('Wird bei Bedarf neu erzeugt'),
+            onTap: _working
+                ? null
+                : () => _runMaintenance(() async {
+                      final svc = ref.read(thumbnailServiceProvider);
+                      if (svc == null) return 'Kein Vault geöffnet.';
+                      final n = await svc.clearCache();
+                      return '$n Thumbnails gelöscht.';
+                    }),
           ),
 
           if (_working) ...[

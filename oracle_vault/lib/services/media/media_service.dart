@@ -23,6 +23,7 @@ import 'package:uuid/uuid.dart';
 import '../../data/db/daos/media_dao.dart';
 import '../../data/db/vault_database.dart';
 import '../../data/vault/vault_manager.dart';
+import 'thumbnail_service.dart';
 
 /// Verwaltet Datei-Assets eines geöffneten Vaults.
 ///
@@ -32,7 +33,11 @@ class MediaService {
   final VaultDatabase db;
   final String vaultPath;
 
-  MediaService({required this.db, required this.vaultPath});
+  /// Zum Verwerfen gecachter Thumbnails beim Löschen. Optional, damit Tests
+  /// und Nicht-UI-Aufrufer den Service ohne Cache bauen können.
+  final ThumbnailService? thumbnails;
+
+  MediaService({required this.db, required this.vaultPath, this.thumbnails});
 
   static const _uuid = Uuid();
 
@@ -113,14 +118,22 @@ class MediaService {
   /// Entfernt den DB-Record. Die physische Datei wird nur gelöscht, wenn kein
   /// weiterer Record denselben Hash referenziert (deduplizierte Assets können
   /// sich eine Datei teilen).
+  ///
+  /// Mit dem Record gehen auch die Edges, die auf das Asset zeigen (![[Embed]])
+  /// — edges hat keine Fremdschlüssel, die das erledigen könnten. Und der
+  /// Thumbnail-Cache wird geräumt: er liegt unter dem Hash, ein neues Asset
+  /// mit demselben Inhalt bekäme sonst ein Bild aus dem Cache statt aus der
+  /// Datei.
   Future<void> deleteMedia(MediaFile media, {bool removeFile = true}) async {
+    await db.edgeDao.purgeFor('media', media.id);
     await _dao.deleteMedia(media.id);
-    if (!removeFile) return;
+
     final remaining = await _dao.countByHash(media.hash);
-    if (remaining == 0) {
-      final f = fileFor(media);
-      if (await f.exists()) await f.delete();
-    }
+    if (remaining > 0) return; // andere Records teilen sich Datei und Cache
+    await thumbnails?.evict(media);
+    if (!removeFile) return;
+    final f = fileFor(media);
+    if (await f.exists()) await f.delete();
   }
 
   // ── Helfer ──────────────────────────────────────────────────────────────

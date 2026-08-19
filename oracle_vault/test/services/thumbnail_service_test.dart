@@ -19,8 +19,9 @@ void main() {
   setUp(() async {
     vaultDir = await Directory.systemTemp.createTemp('ov_thumb_test');
     db = VaultDatabase.inMemory();
-    media = MediaService(db: db, vaultPath: vaultDir.path);
     thumbs = ThumbnailService(vaultPath: vaultDir.path);
+    media = MediaService(
+        db: db, vaultPath: vaultDir.path, thumbnails: thumbs);
   });
 
   tearDown(() async {
@@ -102,5 +103,48 @@ void main() {
     final results =
         await Future.wait(items.map((m) => pool.thumbnailFor(m, size: 64)));
     expect(results.every((f) => f != null), isTrue);
+  });
+
+  // ── Aufräumen (Issue #23) ───────────────────────────────────────────────
+
+  test('deleteMedia räumt den Thumbnail-Cache mit weg', () async {
+    final asset = await importImage('karte.png', 400, 300);
+    final thumb = await thumbs.thumbnailFor(asset);
+    expect(await thumb!.exists(), isTrue);
+
+    await media.deleteMedia(asset);
+
+    expect(await thumb.exists(), isFalse,
+        reason: 'der Cache liegt unter dem Hash — ein neues Asset mit '
+            'demselben Inhalt bekäme sonst das alte Bild');
+  });
+
+  test('deleteMedia behält den Cache, solange ein zweiter Record ihn teilt',
+      () async {
+    final asset = await importImage('karte.png', 400, 300);
+    final thumb = await thumbs.thumbnailFor(asset);
+
+    // Zweiter Record auf denselben Hash (Deduplizierung teilt sich Datei
+    // und Cache).
+    await db.mediaDao.insertMedia(MediaFilesCompanion.insert(
+      id: 'zwilling',
+      filePath: asset.filePath,
+      type: asset.type,
+      hash: asset.hash,
+      createdAt: DateTime.now(),
+    ));
+
+    await media.deleteMedia(asset);
+    expect(await thumb!.exists(), isTrue);
+  });
+
+  test('clearCache leert den gesamten Cache', () async {
+    final a = await importImage('a.png', 400, 300);
+    final b = await importImage('b.png', 300, 400);
+    await thumbs.thumbnailFor(a);
+    await thumbs.thumbnailFor(b);
+
+    expect(await thumbs.clearCache(), 2);
+    expect(Directory(thumbs.cacheDir()).listSync(), isEmpty);
   });
 }

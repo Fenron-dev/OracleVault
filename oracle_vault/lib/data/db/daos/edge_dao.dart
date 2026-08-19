@@ -84,6 +84,42 @@ class EdgeDao extends DatabaseAccessor<VaultDatabase> with _$EdgeDaoMixin {
     });
   }
 
+  /// Entfernt alle Edges, die von [type]/[id] ausgehen oder darauf zeigen.
+  ///
+  /// WARUM VON HAND?
+  /// edges ist bewusst generisch (from_type/from_id statt echter
+  /// Fremdschlüssel), damit jede Relation abbildbar ist — dafür kann SQLite
+  /// hier nicht kaskadieren. Jeder Löschpfad muss selbst aufräumen, sonst
+  /// wachsen verwaiste Edges unbegrenzt und verfälschen später den Graph.
+  Future<int> purgeFor(String type, String id) => (delete(edges)
+        ..where((e) =>
+            (e.fromType.equals(type) & e.fromId.equals(id)) |
+            (e.toType.equals(type) & e.toId.equals(id))))
+      .go();
+
+  /// Entfernt Edges, deren Endpunkt es nicht mehr gibt — Wartung für Bestände,
+  /// die vor den Aufräum-Pfaden entstanden sind.
+  /// Gibt die Anzahl entfernter Edges zurück.
+  Future<int> purgeOrphans() {
+    // Nur bekannte Typen prüfen: käme später ein from_type dazu, den diese
+    // Abfrage nicht kennt, würde sonst alles davon gelöscht.
+    const sql = "DELETE FROM edges WHERE "
+        "(from_type = 'table' AND NOT EXISTS "
+        "   (SELECT 1 FROM oracle_tables t WHERE t.id = from_id)) "
+        "OR (to_type = 'table' AND NOT EXISTS "
+        "   (SELECT 1 FROM oracle_tables t WHERE t.id = to_id)) "
+        "OR (from_type = 'entry' AND NOT EXISTS "
+        "   (SELECT 1 FROM entries e WHERE e.id = from_id)) "
+        "OR (to_type = 'entry' AND NOT EXISTS "
+        "   (SELECT 1 FROM entries e WHERE e.id = to_id)) "
+        "OR (from_type = 'media' AND NOT EXISTS "
+        "   (SELECT 1 FROM media_files m WHERE m.id = from_id)) "
+        "OR (to_type = 'media' AND NOT EXISTS "
+        "   (SELECT 1 FROM media_files m WHERE m.id = to_id))";
+    return db.customUpdate(sql,
+        updates: {edges}, updateKind: UpdateKind.delete);
+  }
+
   /// Baut eine Wikilink-/Embed-Edge (ohne sie zu speichern).
   static EdgesCompanion buildLinkEdge({
     required String fromType,
