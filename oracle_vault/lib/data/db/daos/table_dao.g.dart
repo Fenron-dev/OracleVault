@@ -11,4 +11,8 @@ mixin _$TableDaoMixin on DatabaseAccessor<VaultDatabase> {
   $EntriesTable get entries => attachedDatabase.entries;
   $TagsTable get tags => attachedDatabase.tags;
   $TableTagsTable get tableTags => attachedDatabase.tableTags;
+  $EdgesTable get edges => attachedDatabase.edges;
+  $CollectionsTable get collections => attachedDatabase.collections;
+  $CollectionTablesTable get collectionTables =>
+      attachedDatabase.collectionTables;
 }

@@ -19,8 +19,10 @@ class Tags extends Table {
 
 /// Verbindungstabelle: OracleTable ↔ Tag (n:m).
 class TableTags extends Table {
-  TextColumn get tableId => text().references(OracleTables, #id)();
-  TextColumn get tagId => text().references(Tags, #id)();
+  TextColumn get tableId =>
+      text().references(OracleTables, #id, onDelete: KeyAction.cascade)();
+  TextColumn get tagId =>
+      text().references(Tags, #id, onDelete: KeyAction.cascade)();
 
   @override
   Set<Column> get primaryKey => {tableId, tagId};

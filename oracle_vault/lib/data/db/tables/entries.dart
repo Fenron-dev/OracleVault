@@ -25,7 +25,8 @@ import 'media_files.dart';
 class Entries extends Table {
   TextColumn get id => text()();
   @ReferenceName('entries')
-  TextColumn get tableId => text().references(OracleTables, #id)();
+  TextColumn get tableId =>
+      text().references(OracleTables, #id, onDelete: KeyAction.cascade)();
 
   /// Anzeigereihenfolge innerhalb der Tabelle.
   IntColumn get position => integer()();
@@ -46,12 +47,16 @@ class Entries extends Table {
   IntColumn get rollMax => integer().nullable()();
 
   /// Verweis auf ein Media-Asset (Bild, Audio, ...).
-  TextColumn get mediaId => text().nullable().references(MediaFiles, #id)();
+  TextColumn get mediaId => text()
+      .nullable()
+      .references(MediaFiles, #id, onDelete: KeyAction.setNull)();
 
   /// Verweis auf eine Unter-Tabelle, die bei Ziehen automatisch aufgelöst wird.
   /// Zyklus-Erkennung erfolgt in der Roll-Engine.
   @ReferenceName('subtableEntries')
-  TextColumn get subtableId => text().nullable().references(OracleTables, #id)();
+  TextColumn get subtableId => text()
+      .nullable()
+      .references(OracleTables, #id, onDelete: KeyAction.setNull)();
 
   /// KI-Import-Marker: true = niedriger Konfidenz-Score, gelbe Hervorhebung.
   BoolColumn get confidenceLow =>

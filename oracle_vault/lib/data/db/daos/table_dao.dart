@@ -6,15 +6,19 @@
 // PHASE: 1
 
 import 'package:drift/drift.dart';
+import 'package:meta/meta.dart';
 
 import '../vault_database.dart';
 import '../tables/oracle_tables.dart';
 import '../tables/tags.dart';
 import '../tables/entries.dart';
+import '../tables/edges.dart';
+import '../tables/collections.dart';
 
 part 'table_dao.g.dart';
 
-@DriftAccessor(tables: [OracleTables, Entries, Tags, TableTags])
+@DriftAccessor(
+    tables: [OracleTables, Entries, Tags, TableTags, Edges, CollectionTables])
 class TableDao extends DatabaseAccessor<VaultDatabase> with _$TableDaoMixin {
   TableDao(super.db);
 
@@ -70,18 +74,79 @@ class TableDao extends DatabaseAccessor<VaultDatabase> with _$TableDaoMixin {
     return query.map((row) => row.readTable(tags)).watch();
   }
 
-  /// FTS5-Volltextsuche: gibt Tabellen-IDs zurück, die zu [query] passen.
+  /// Volltextsuche: gibt Tabellen-IDs zurück, die zu [query] passen.
+  ///
+  /// Zwei Quellen werden vereinigt:
+  ///   1. FTS5 über content/body_md aller Einträge (Präfix-Suche)
+  ///   2. LIKE über Name und Beschreibung der Tabelle selbst
+  ///
+  /// Punkt 2 ist nötig, weil der Tabellenname nicht im FTS-Index liegen kann:
+  /// entries_fts ist eine external-content-Tabelle über `entries`, und dort
+  /// gibt es keine Namensspalte (siehe VaultDatabase._createFts5AndTriggers).
+  ///
   /// Leerer Query → leere Liste.
   Future<List<String>> searchTableIds(String query) async {
-    if (query.trim().isEmpty) return [];
-    // FTS5-Match mit Wildcard am Ende für Prefix-Suche.
-    final safeQuery = '${query.trim().replaceAll('"', '')}*';
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return [];
+
+    final ids = <String>{};
+
+    // ── 1. Einträge via FTS5 ────────────────────────────────────────────────
+    final match = ftsPrefixQuery(trimmed);
+    if (match != null) {
+      // Kein ORDER BY rank: die Reihenfolge geht ohnehin verloren, weil der
+      // Aufrufer (tableListProvider) nach updatedAt sortiert — und DISTINCT
+      // verträgt sich nicht mit einem ORDER BY auf einer nicht selektierten
+      // Spalte.
+      // entries_fts NICHT aliasen: der MATCH-Operator verlangt links den
+      // echten Tabellennamen, ein Alias ergibt "no such column".
+      final rows = await db.customSelect(
+        'SELECT DISTINCT e.table_id AS table_id '
+        'FROM entries_fts JOIN entries e ON e.rowid = entries_fts.rowid '
+        'WHERE entries_fts MATCH ?',
+        variables: [Variable.withString(match)],
+        readsFrom: {entries},
+      ).get();
+      ids.addAll(rows.map((r) => r.read<String>('table_id')));
+    }
+
+    // ── 2. Tabellenname / Beschreibung via LIKE ─────────────────────────────
     final rows = await db.customSelect(
-      'SELECT DISTINCT table_id FROM entries_fts WHERE entries_fts MATCH ? ORDER BY rank',
-      variables: [Variable.withString(safeQuery)],
+      "SELECT id FROM oracle_tables "
+      "WHERE name LIKE ?1 ESCAPE '\\' "
+      "   OR IFNULL(description, '') LIKE ?1 ESCAPE '\\'",
+      variables: [Variable.withString('%${_escapeLike(trimmed)}%')],
+      readsFrom: {oracleTables},
     ).get();
-    return rows.map((r) => r.read<String>('table_id')).toList();
+    ids.addAll(rows.map((r) => r.read<String>('id')));
+
+    return ids.toList();
   }
+
+  /// Baut aus roher Nutzer-Eingabe einen gültigen FTS5-Präfix-Ausdruck.
+  ///
+  /// Der Begriff wird als Phrase gequotet. Ohne das interpretiert FTS5
+  /// Interpunktion und Schlüsselwörter als Syntax — `Rock (Hard)` ergibt
+  /// „syntax error", `a-b` ergibt „no such column: b", `foo:bar` ergibt
+  /// „no such column: foo".
+  ///
+  /// Gibt null zurück, wenn der Begriff kein einziges Token enthält (z. B. nur
+  /// Klammern) — eine leere Phrase wäre wieder ein Syntaxfehler.
+  @visibleForTesting
+  static String? ftsPrefixQuery(String raw) {
+    // Anführungszeichen beenden die Phrase vorzeitig → durch Leerzeichen
+    // ersetzen statt zu verdoppeln (Nutzer meinen selten eine echte Phrase).
+    final cleaned = raw.replaceAll('"', ' ').trim();
+    if (cleaned.isEmpty) return null;
+    if (!RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(cleaned)) return null;
+    return '"$cleaned"*';
+  }
+
+  /// Maskiert LIKE-Platzhalter, damit % und _ aus der Eingabe wörtlich suchen.
+  static String _escapeLike(String raw) => raw
+      .replaceAll(r'\', r'\\')
+      .replaceAll('%', r'\%')
+      .replaceAll('_', r'\_');
 
   // ── Schreiben ──────────────────────────────────────────────────────────────
 
@@ -94,14 +159,43 @@ class TableDao extends DatabaseAccessor<VaultDatabase> with _$TableDaoMixin {
       (update(oracleTables)..where((t) => t.id.equals(table.id.value)))
           .write(table);
 
-  Future<int> deleteTable(String id) =>
-      (delete(oracleTables)..where((t) => t.id.equals(id))).go();
+  /// Löscht eine Tabelle samt allem, was an ihr hängt.
+  ///
+  /// Einträge, Tag- und Collection-Zuordnungen räumt SQLite selbst per
+  /// ON DELETE CASCADE weg (siehe Schema, ab schemaVersion 2). Was NICHT
+  /// kaskadieren kann, sind die Edges: die Verknüpfungstabelle ist bewusst
+  /// generisch (from_type/from_id statt echter Fremdschlüssel) und würde sonst
+  /// verwaiste Zeilen behalten. Deshalb werden sie hier explizit entfernt.
+  Future<void> deleteTable(String id) => transaction(() async {
+        await _purgeRelations(id);
+        await (delete(oracleTables)..where((t) => t.id.equals(id))).go();
+      });
 
   Future<void> bulkDelete(List<String> ids) => transaction(() async {
         for (final id in ids) {
+          await _purgeRelations(id);
           await (delete(oracleTables)..where((t) => t.id.equals(id))).go();
         }
       });
+
+  /// Entfernt alle Edges, die auf [tableId] oder einen ihrer Einträge zeigen —
+  /// in beide Richtungen. Muss VOR dem Löschen laufen, weil die Eintrags-IDs
+  /// danach nicht mehr ermittelbar sind.
+  Future<void> _purgeRelations(String tableId) async {
+    final rows = await (selectOnly(entries)
+          ..addColumns([entries.id])
+          ..where(entries.tableId.equals(tableId)))
+        .get();
+    final entryIds = rows.map((r) => r.read(entries.id)!).toList();
+
+    await (delete(edges)
+          ..where((e) =>
+              (e.fromType.equals('table') & e.fromId.equals(tableId)) |
+              (e.toType.equals('table') & e.toId.equals(tableId)) |
+              (e.fromType.equals('entry') & e.fromId.isIn(entryIds)) |
+              (e.toType.equals('entry') & e.toId.isIn(entryIds))))
+        .go();
+  }
 
   Future<void> bulkUpdateLanguage(List<String> ids, String language) =>
       transaction(() async {

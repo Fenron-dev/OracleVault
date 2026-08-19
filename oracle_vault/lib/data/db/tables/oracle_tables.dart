@@ -34,8 +34,12 @@ class OracleTables extends Table {
 
   TextColumn get genre => text().nullable()();
   TextColumn get theme => text().nullable()();
-  TextColumn get categoryId => text().nullable().references(Categories, #id)();
-  TextColumn get sourceId => text().nullable().references(Sources, #id)();
+  TextColumn get categoryId => text()
+      .nullable()
+      .references(Categories, #id, onDelete: KeyAction.setNull)();
+  TextColumn get sourceId => text()
+      .nullable()
+      .references(Sources, #id, onDelete: KeyAction.setNull)();
 
   /// ISO 639-1 Sprachcode der Einträge.
   TextColumn get language => text().withDefault(const Constant('de'))();

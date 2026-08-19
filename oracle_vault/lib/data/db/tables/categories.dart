@@ -15,7 +15,9 @@ class Categories extends Table {
   TextColumn get name => text()();
 
   /// Eltern-Kategorie. Null = Top-Level.
-  TextColumn get parentId => text().nullable().references(Categories, #id)();
+  TextColumn get parentId => text()
+      .nullable()
+      .references(Categories, #id, onDelete: KeyAction.setNull)();
 
   @override
   Set<Column> get primaryKey => {id};
