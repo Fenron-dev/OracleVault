@@ -29,6 +29,7 @@ jobs:
   test:
     name: Analyze & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: oracle_vault
@@ -66,6 +67,9 @@ jobs:
     name: Build ${{ matrix.target }}
     needs: test
     runs-on: ${{ matrix.os }}
+    # Der längste Build (macOS) liegt bei ~8 Minuten — was nach 45 noch läuft,
+    # hängt.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: oracle_vault
@@ -107,9 +111,17 @@ jobs:
       - name: Install Linux build dependencies
         if: matrix.target == 'linux'
         # libsecret: Backend von flutter_secure_storage unter Linux.
+        #
+        # DEBIAN_FRONTEND + Lock::Timeout sind kein Zierrat: ohne sie hing
+        # dieser Schritt sechs Stunden, bis das Job-Limit ihn abräumte. Auf dem
+        # Runner läuft unattended-upgrades, und apt wartet sonst unbegrenzt auf
+        # die dpkg-Lock (bzw. auf eine debconf-Eingabe, die nie kommt).
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev libsecret-1-dev
+          sudo apt-get -o DPkg::Lock::Timeout=180 update -qq
+          sudo apt-get -o DPkg::Lock::Timeout=180 install -y --no-install-recommends \
+            ninja-build libgtk-3-dev libsecret-1-dev
 
       - uses: subosito/flutter-action@v2
         with:
@@ -180,21 +192,27 @@ jobs:
       - name: Attach artifacts to release
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
+          # nullglob: ohne das bleibt ein nicht passendes Muster als Literal
+          # stehen und der Upload würde über eine Datei "*.apk" stolpern.
+          shopt -s nullglob
           cd artifacts
-          # Verzeichnis-Artefakte (Windows/Linux) zippen, fertige Dateien
-          # (zip/apk) einfach hochheben.
           for dir in */; do
             name="${dir%/}"
-            if find "$dir" -maxdepth 1 -type f \( -name '*.zip' -o -name '*.apk' \) | read -r _; then
-              find "$dir" -maxdepth 1 -type f \( -name '*.zip' -o -name '*.apk' \) -exec cp {} . \;
-            else
-              (cd "$dir" && zip -qr "../$name.zip" .)
-            fi
+            # Fertige Dateien (zip/apk) heraufheben und nach dem Ziel benennen,
+            # sonst hängt am Release ein nichtssagendes app-release.apk.
+            found=0
+            for f in "$dir"*.zip "$dir"*.apk; do
+              cp "$f" "./$name.${f##*.}"
+              found=1
+            done
+            # Verzeichnis-Artefakte (Windows/Linux) zippen.
+            [ "$found" -eq 0 ] && (cd "$dir" && zip -qr "../$name.zip" .)
           done
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
           for f in *.zip *.apk; do
-            [ -f "$f" ] && gh release upload "$GITHUB_REF_NAME" "$f" --clobber
+            gh release upload "$GITHUB_REF_NAME" "$f" --clobber
           done
