@@ -83,8 +83,10 @@ dependencies:
   pasteboard: ^0.3.0
 
   # ─── KI-Integration (Phase 3) ────────────────────────────────────────────
-  # Hinweis: flutter_secure_storage wurde entfernt — API-Keys in SharedPreferences,
-  # da Keychain auf ad-hoc-signierten macOS-Builds nicht funktioniert (-34018).
+  # flutter_secure_storage: API-Keys in Keychain/Keystore. ApiKeyStore prüft
+  # zur Laufzeit, ob der Zugriff klappt, und fällt sonst auf SharedPreferences
+  # zurück — ad-hoc-signierte macOS-Builds scheitern mit -34018 (siehe #8).
+  flutter_secure_storage: ^9.2.4
 
   # ─── Medien (Phase 4) ─────────────────────────────────────────────────────
   # crypto: SHA-256-Hash für Dublettenerkennung beim Medien-Import (Streaming).
