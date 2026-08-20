@@ -1,0 +1,218 @@
+# Datei: .github/workflows/ci.yml
+#
+# ZWECK: Ein Workflow für Prüfung und Builds.
+#        Erst das Gate (analyze + test), dann die Plattform-Builds — was die
+#        Tests nicht besteht, wird gar nicht erst gebaut.
+#
+# ERSETZT: build-macos.yml (baute ohne vorherige Prüfung nur macOS).
+
+name: CI
+
+on:
+  push:
+    branches: [main, 'ci/**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# Ein laufender Build pro Branch reicht — ein Push macht den vorherigen
+# überflüssig.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.41.4
+
+jobs:
+  # ── Gate ────────────────────────────────────────────────────────────────────
+  test:
+    name: Analyze & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: oracle_vault
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Pub-Cache getrennt vom SDK-Cache: der Schlüssel hängt an pubspec.lock,
+      # nicht an der Flutter-Version.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('oracle_vault/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code generation (Drift + Riverpod)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test --reporter expanded
+
+  # ── Builds ──────────────────────────────────────────────────────────────────
+  build:
+    name: Build ${{ matrix.target }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    # Der längste Build (macOS) liegt bei ~8 Minuten — was nach 45 noch läuft,
+    # hängt.
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: oracle_vault
+    strategy:
+      # Ein kaputtes Ziel soll die anderen nicht abbrechen — sonst sieht man
+      # pro Lauf immer nur den ersten Fehler.
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos
+            os: macos-latest
+            build: flutter build macos --release
+            artifact: oracle_vault/build/macos/Build/Products/Release/oracle_vault-macos.zip
+          - target: ios
+            os: macos-latest
+            build: flutter build ios --release --no-codesign
+            artifact: oracle_vault/build/ios/iphoneos/oracle_vault-ios.zip
+          - target: android
+            os: ubuntu-latest
+            build: flutter build apk --release
+            artifact: oracle_vault/build/app/outputs/flutter-apk/app-release.apk
+          - target: windows
+            os: windows-latest
+            build: flutter build windows --release
+            artifact: oracle_vault/build/windows/x64/runner/Release
+          - target: linux
+            os: ubuntu-latest
+            build: flutter build linux --release
+            artifact: oracle_vault/build/linux/x64/release/bundle
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v4
+        if: matrix.target == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Linux build dependencies
+        if: matrix.target == 'linux'
+        # libsecret: Backend von flutter_secure_storage unter Linux.
+        #
+        # DEBIAN_FRONTEND + Lock::Timeout sind kein Zierrat: ohne sie hing
+        # dieser Schritt sechs Stunden, bis das Job-Limit ihn abräumte. Auf dem
+        # Runner läuft unattended-upgrades, und apt wartet sonst unbegrenzt auf
+        # die dpkg-Lock (bzw. auf eine debconf-Eingabe, die nie kommt).
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get -o DPkg::Lock::Timeout=180 update -qq
+          sudo apt-get -o DPkg::Lock::Timeout=180 install -y --no-install-recommends \
+            ninja-build libgtk-3-dev libsecret-1-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('oracle_vault/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+
+      - uses: actions/cache@v4
+        if: matrix.target == 'android'
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('oracle_vault/android/**/*.gradle*') }}
+          restore-keys: gradle-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run code generation (Drift + Riverpod)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build
+        run: ${{ matrix.build }}
+
+      # .app-Bundles vor dem Upload packen: sonst zerlegt upload-artifact sie
+      # in Einzeldateien und verliert die Symlinks.
+      - name: Package macOS app
+        if: matrix.target == 'macos'
+        run: |
+          cd build/macos/Build/Products/Release
+          ditto -c -k --keepParent oracle_vault.app oracle_vault-macos.zip
+
+      - name: Package iOS app (unsigniert)
+        if: matrix.target == 'ios'
+        run: |
+          cd build/ios/iphoneos
+          ditto -c -k --keepParent Runner.app oracle_vault-ios.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: oracle_vault-${{ matrix.target }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  # ── Release ─────────────────────────────────────────────────────────────────
+  # Nur bei einem v*-Tag: hängt alle Artefakte an das GitHub-Release.
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Attach artifacts to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # nullglob: ohne das bleibt ein nicht passendes Muster als Literal
+          # stehen und der Upload würde über eine Datei "*.apk" stolpern.
+          shopt -s nullglob
+          cd artifacts
+          for dir in */; do
+            name="${dir%/}"
+            # Fertige Dateien (zip/apk) heraufheben und nach dem Ziel benennen,
+            # sonst hängt am Release ein nichtssagendes app-release.apk.
+            found=0
+            for f in "$dir"*.zip "$dir"*.apk; do
+              cp "$f" "./$name.${f##*.}"
+              found=1
+            done
+            # Verzeichnis-Artefakte (Windows/Linux) zippen.
+            [ "$found" -eq 0 ] && (cd "$dir" && zip -qr "../$name.zip" .)
+          done
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME"
+          for f in *.zip *.apk; do
+            gh release upload "$GITHUB_REF_NAME" "$f" --clobber
+          done
